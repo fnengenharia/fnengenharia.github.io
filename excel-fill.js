@@ -352,12 +352,13 @@ const RdoExcel = (function () {
 
     if (base64Png) {
       const imageId = workbook.addImage({ base64: base64Png, extension: 'png' });
-      // Calibração inicial (bloco ficou mais estreito/baixo que o antigo -
-      // A:F em vez de A:J, 2 linhas em vez de 3) - AJUSTAR depois de
-      // conferir visualmente um PDF/PNG de teste, mesma convenção de
-      // feedback_exceljs_template_fill.
+      // Calibrado a pedido do Paulo (14/07): eixo das 3 assinaturas entre
+      // as linhas 74:75 (centro em Y=1084.8pt, topo da linha 75), eixo das
+      // colunas do Elaborador entre C:D (X=108pt) - tl calculado centrando
+      // a imagem (90x22px = 67.5x16.5pt) nesses eixos, usando os mesmos
+      // Rows(n).Top/Range(col).Left medidos via Excel COM de sempre.
       sh.addImage(imageId, {
-        tl: { col: 0.8, row: 73.15 },
+        tl: { col: 2.0625, row: 73.4271 },
         ext: { width: 90, height: 22 }
       });
     }
@@ -376,8 +377,9 @@ const RdoExcel = (function () {
 
     if (base64Png) {
       const imageId = workbook.addImage({ base64: base64Png, extension: 'png' });
+      // Eixo das colunas no MEIO da coluna J (X=327pt, pedido do Paulo 14/07).
       sh.addImage(imageId, {
-        tl: { col: 9.0, row: 73.15 },
+        tl: { col: 8.375, row: 73.4271 },
         ext: { width: 90, height: 22 }
       });
     }
@@ -396,9 +398,13 @@ const RdoExcel = (function () {
 
     if (base64Png) {
       const imageId = workbook.addImage({ base64: base64Png, extension: 'png' });
+      // Eixo das colunas entre S:T (X=554.4pt), mesmo eixo de linhas
+      // 74:75 dos outros dois (pedido do Paulo 14/07) - antes usava o
+      // bloco inteiro de 4 linhas, agora fica no mesmo "corredor" que
+      // Elaborador/Aprovador.
       sh.addImage(imageId, {
-        tl: { col: 15.7, row: 73.1 },
-        ext: { width: 140, height: 34 }
+        tl: { col: 17.115, row: 73.4271 },
+        ext: { width: 90, height: 22 }
       });
     }
   }
@@ -464,7 +470,11 @@ const RdoExcel = (function () {
     const celCentralizada = (endereco, texto) => {
       const cell = sh.getCell(endereco);
       cell.value = texto;
-      cell.alignment = Object.assign({}, cell.alignment, { vertical: 'middle' });
+      // Corrigido 14/07: a função já se chamava "centralizada" mas só
+      // setava o alinhamento VERTICAL - o valor (nº/Rev./Página) ficava
+      // encostado à esquerda da célula em vez de centralizado de verdade
+      // (pedido do Paulo: "alinhe no meio da linha").
+      cell.alignment = Object.assign({}, cell.alignment, { vertical: 'middle', horizontal: 'center' });
     };
     celCentralizada(CELULAS.numero, String(numero));
     celCentralizada(CELULAS.rev, '0');

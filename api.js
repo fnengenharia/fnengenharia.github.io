@@ -368,6 +368,11 @@ const RdoApi = (function () {
     return postJson_({ action: 'buscarPdfPorId', login, senha, pdfFileId });
   }
 
+  // Excel editável de um RDO - exclusivo admin_master (14/07/2026, ver [[project_rdo_app]]).
+  function buscarXlsxPorId(login, senha, xlsxFileId) {
+    return postJson_({ action: 'buscarXlsxPorId', login, senha, xlsxFileId });
+  }
+
   function reenviarLinkAprovacao(login, senha, token) {
     return postJson_({ action: 'reenviarLinkAprovacao', login, senha, token });
   }
@@ -411,7 +416,7 @@ const RdoApi = (function () {
     getObras, getEquipamentos, getVeiculos, reservarNumero, enviarRDO, previsualizarRDO, gerarLinkPreview,
     getVersaoApp, logErro, enviarParaAprovacao, buscarAprovacao, finalizarAprovacao,
     buscarCliente, buscarNomeCliente, cadastrarCliente, login, salvarAssinaturaUsuario,
-    meusRdos, buscarPdfPorId, reenviarLinkAprovacao, corrigirEmailAprovacao,
+    meusRdos, buscarPdfPorId, buscarXlsxPorId, reenviarLinkAprovacao, corrigirEmailAprovacao,
     salvarParaAprovacaoInterna, listarAprovacoesInternas, buscarAprovacaoInterna
   };
 })();

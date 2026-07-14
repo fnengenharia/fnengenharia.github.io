@@ -284,7 +284,7 @@ const RdoPreviewOffline = (function () {
     // Aprovador/Contratante, modelo novo de 13/07/2026).
     if (state.assinaturaContratadaImagemBase64) {
       try {
-        const pos = posicaoAncoraPt_(0.8, 73.15, 90, 22);
+        const pos = posicaoAncoraPt_(2.0625, 73.4271, 90, 22);
         const imgAssinatura = await carregarImagemElemento_(state.assinaturaContratadaImagemBase64);
         doc.addImage(imgAssinatura, 'PNG', pos.x, pos.y, pos.width, pos.height);
       } catch (err) {
@@ -293,7 +293,7 @@ const RdoPreviewOffline = (function () {
     }
     if (state.assinaturaAprovadorImagemBase64) {
       try {
-        const pos = posicaoAncoraPt_(9.0, 73.15, 90, 22);
+        const pos = posicaoAncoraPt_(8.375, 73.4271, 90, 22);
         const imgAssinatura = await carregarImagemElemento_(state.assinaturaAprovadorImagemBase64);
         doc.addImage(imgAssinatura, 'PNG', pos.x, pos.y, pos.width, pos.height);
       } catch (err) {
@@ -302,7 +302,7 @@ const RdoPreviewOffline = (function () {
     }
     if (state.assinaturaImagemBase64) {
       try {
-        const pos = posicaoAncoraPt_(15.7, 73.1, 140, 34);
+        const pos = posicaoAncoraPt_(17.115, 73.4271, 90, 22);
         const imgAssinatura = await carregarImagemElemento_(state.assinaturaImagemBase64);
         doc.addImage(imgAssinatura, 'PNG', pos.x, pos.y, pos.width, pos.height);
       } catch (err) {

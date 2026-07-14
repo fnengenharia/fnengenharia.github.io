@@ -6,7 +6,7 @@
 // cada release (o mesmo valor deve ser espelhado em APP_VERSAO_ATUAL no
 // Code.gs, que é o que a atualização automática usa pra saber se tem
 // versão nova pra baixar).
-const VERSAO_APP = 'BETA 0.9.5';
+const VERSAO_APP = 'BETA 0.9.6';
 document.getElementById('versao-app').textContent = VERSAO_APP;
 
 // ---------------------------------------------------------------------------
@@ -1527,11 +1527,16 @@ function abrirDetalheObraPerfil_(chave) {
 function montarLinhaAprovado_(item) {
   const linha = document.createElement('div');
   linha.className = 'linha-rdo-perfil aprovado';
+  // Botão "Baixar .xlsx" (14/07/2026) - exclusivo admin_master, e só
+  // aparece se este RDO tiver um xlsxFileId salvo (RDOs enviados ANTES
+  // dessa mudança não têm o arquivo guardado no Drive, só o PDF).
+  const mostrarBotaoXlsx = perfilAtual_() === 'admin_master' && item.xlsxFileId;
   linha.innerHTML = `
     <div class="info-rdo-perfil"><svg class="icone-linha" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/></svg><span>RDO nº ${item.numero} - ${item.data || ''}</span></div>
     <div class="botoes-rdo-perfil">
       <button type="button" class="botao-mini btn-ver-perfil">Visualizar PDF</button>
       <button type="button" class="botao-mini btn-compartilhar-perfil">Compartilhar</button>
+      ${mostrarBotaoXlsx ? '<button type="button" class="botao-mini btn-baixar-xlsx-perfil">Baixar .xlsx</button>' : ''}
     </div>
     <div class="status status-linha-perfil"></div>`;
 
@@ -1577,6 +1582,28 @@ function montarLinhaAprovado_(item) {
       botao.disabled = false;
     }
   });
+
+  const btnBaixarXlsx = linha.querySelector('.btn-baixar-xlsx-perfil');
+  if (btnBaixarXlsx) {
+    btnBaixarXlsx.addEventListener('click', async (e) => {
+      const botao = e.currentTarget;
+      botao.disabled = true;
+      try {
+        statusLinha.textContent = 'Preparando .xlsx...';
+        statusLinha.className = 'status status-linha-perfil';
+        const resp = await RdoApi.buscarXlsxPorId(sessao.login, sessao.senha, item.xlsxFileId);
+        if (!resp.ok) throw new Error(resp.erro || 'Não consegui baixar esse Excel.');
+        const nomeXlsx = item.fileName.replace(/\.pdf$/i, '.xlsx');
+        await compartilharPdf_(resp.xlsxBase64, nomeXlsx, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        statusLinha.textContent = '';
+      } catch (err) {
+        statusLinha.textContent = 'Erro: ' + (err && err.message ? err.message : err);
+        statusLinha.className = 'status status-linha-perfil erro';
+      } finally {
+        botao.disabled = false;
+      }
+    });
+  }
 
   return linha;
 }
@@ -1967,6 +1994,9 @@ function base64ParaBlob_(base64, mime) {
 // window.Capacitor.Plugins nesta configuração sem bundler, então
 // `Directory.Cache` dava undefined e quebrava tudo silenciosamente - era
 // o bug real por trás de "não consigo baixar").
+// Nome mantido "Pdf" por histórico (a maioria dos usos é PDF mesmo), mas
+// serve pra qualquer arquivo binário salvo no cache - reaproveitado pelo
+// "Baixar .xlsx" do admin_master (14/07/2026, ver compartilharPdf_ abaixo).
 async function salvarPdfCache_(base64, fileName) {
   const plugins = window.Capacitor.Plugins || {};
   if (!plugins.Filesystem) throw new Error('Plugin Filesystem não encontrado no app instalado - reinstale o apk mais recente.');
@@ -1978,7 +2008,7 @@ async function salvarPdfCache_(base64, fileName) {
       recursive: true
     });
   } catch (err) {
-    throw new Error('Falha ao salvar o PDF no celular: ' + (err && err.message ? err.message : err));
+    throw new Error('Falha ao salvar o arquivo no celular: ' + (err && err.message ? err.message : err));
   }
 }
 
@@ -2004,9 +2034,12 @@ async function abrirPdfParaVisualizar_(base64, fileName) {
   }
 }
 
-async function compartilharPdf_(base64, fileName) {
+// mimeType (14/07/2026, opcional) - generalizado pra reaproveitar com o
+// "Baixar .xlsx" do admin_master, além do PDF de sempre.
+async function compartilharPdf_(base64, fileName, mimeType) {
+  const tipo = mimeType || 'application/pdf';
   if (!rodandoNoApp_()) {
-    const blob = base64ParaBlob_(base64, 'application/pdf');
+    const blob = base64ParaBlob_(base64, tipo);
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -2024,7 +2057,7 @@ async function compartilharPdf_(base64, fileName) {
       dialogTitle: 'Salvar ou compartilhar o RDO'
     });
   } catch (err) {
-    throw new Error('PDF salvo em ' + resultado.uri + ', mas não consegui abrir o menu de compartilhar: ' + (err && err.message ? err.message : err));
+    throw new Error('Arquivo salvo em ' + resultado.uri + ', mas não consegui abrir o menu de compartilhar: ' + (err && err.message ? err.message : err));
   }
 }
 
@@ -2136,6 +2169,17 @@ async function resetarParaProximoRdo_() {
   state.assinaturaAprovadorImagemBase64 = null;
 
   assinaturaContratante.limpar();
+  // Bug real corrigido (14/07): limpar() só apaga o DESENHO - o estado
+  // travado/destravado do canvas sobrevivia ao reset (já documentado como
+  // armadilha de TESTE, mas nunca corrigido de verdade pro usuário). Sem
+  // isso, quem destrava/assina um RDO via presencial já começava o
+  // PRÓXIMO RDO com o canvas destravado, mesmo com o desenho limpo -
+  // sempre volta TRAVADO pro próximo RDO, igual um app recém-aberto.
+  if (!assinaturaContratante.estado.travada) {
+    assinaturaContratante.alternarTravamento();
+    el.btnTravarAssinatura.textContent = 'Destravar para assinar';
+    el.btnTravarAssinatura.classList.add('travado');
+  }
   el.nomeAssinante.value = '';
   state.assinaturaNome = '';
   el.concordo.checked = false;
@@ -2462,6 +2506,17 @@ async function sincronizarFilaOffline_() {
   }
 }
 RdoConectividade.aoMudar(online => { if (online) sincronizarFilaOffline_(); });
+
+// Atualização automática (14/07): pedido do Paulo pra sempre atualizar
+// sozinho quando o app tiver internet, não só na abertura fria (a
+// checagem já rodava uma vez no topo do arquivo, mas se o app abrisse
+// SEM sinal - comum em canteiro de obra - nunca tentava de novo até
+// fechar e abrir tudo de novo). Reaproveita o mesmo evento de
+// conectividade da fila offline - `verificarAtualizacaoApp_` já sai cedo
+// e não faz nada se a versão já bate, então repetir a chamada aqui é
+// barato/inofensivo. Continua 100% silenciosa (manual=false) - só o
+// botão "Verificar atualizações" mostra status na tela.
+RdoConectividade.aoMudar(online => { if (online) verificarAtualizacaoApp_(false); });
 
 el.btnConfirmarEnvio.addEventListener('click', async () => {
   el.btnConfirmarEnvio.disabled = true;
