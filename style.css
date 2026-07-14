@@ -207,6 +207,12 @@ textarea { resize: vertical; overflow: hidden; }
   margin-bottom: 10px;
   background: #fff;
 }
+/* Revisão de aprovação interna (14/07) - linha já escrita pelo elaborador
+   (ou por uma revisão anterior), travada pra um administrador comum. */
+.linha-atividade-travada {
+  background: var(--fundo);
+  opacity: 0.75;
+}
 .linha-atividade .cabecalho-atividade {
   display: flex;
   align-items: center;
@@ -417,6 +423,16 @@ textarea { resize: vertical; overflow: hidden; }
   font-weight: bold;
   line-height: 16px;
   text-align: center;
+}
+
+/* Badge inline (14/07, "RDOs para revisar") - mesmo visual do .badge-aba
+   (bolinha vinho/dourado com número), só que no fluxo normal do texto em
+   vez de posicionado sobre um ícone de aba. */
+.badge-inline {
+  position: static;
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
 /* Cabeçalho/resumo/rodapé do Meu Perfil (12/07) - "Perfil" virou também o

@@ -267,7 +267,13 @@ const RdoExcel = (function () {
   // chegar aqui (botão "+ Adicionar" desabilitado e digitação bloqueada
   // no limite), então na prática `itensDescartados` não deveria mais
   // acontecer, é só uma rede de segurança.
-  function preencherAtividades_(sh, linhaInicio, capacidadeSlots, itens) {
+  // mostrarAutor (14/07/2026, papéis de usuário): quando true, cada linha
+  // com `item.autor` preenchido ganha o nome de quem escreveu ao final da
+  // discriminação - "(Fulano)". Só usado no bloco CONTRATADA, e só quando
+  // o RDO passou de fato pela revisão de aprovação interna (ver
+  // mostrarAutorContratada em gerarWorkbook) - um RDO comum (autor único,
+  // sem revisão) nunca mostra essa sufixação.
+  function preencherAtividades_(sh, linhaInicio, capacidadeSlots, itens, mostrarAutor) {
     const naoVazios = itens.filter(item => (item.discriminacao || '').trim() || item.inicio || item.fim);
 
     let slotsUsados = 0;
@@ -275,7 +281,8 @@ const RdoExcel = (function () {
     let itensColocados = 0;
 
     for (const item of naoVazios) {
-      const texto = (item.discriminacao || '').trim();
+      let texto = (item.discriminacao || '').trim();
+      if (mostrarAutor && item.autor) texto += ' (' + item.autor + ')';
       const nLinhas = estimarLinhasAtividade(texto);
       if (slotsUsados + nLinhas > capacidadeSlots) {
         // não coube mais - para aqui (mantém a ordem cronológica das
@@ -482,7 +489,11 @@ const RdoExcel = (function () {
     preencherEfetivoEquipVeiculos_(sh, state.efetivo, state.equipamentos);
     preencherTotais_(sh, state.efetivo, state.equipamentos);
 
-    const resContratada = preencherAtividades_(sh, LINHA_ATIV_CONTRATADA_INICIO, CAPACIDADE_CONTRATADA, state.atividadesContratada);
+    // Sufixação de autor só faz sentido quando existe um Aprovador (RDO
+    // passou pela revisão interna) - um RDO de autor único nunca mostra
+    // "(Nome)" nas atividades, mesmo que item.autor esteja preenchido.
+    const mostrarAutorContratada = Boolean(state.assinaturaAprovadorNome && state.assinaturaAprovadorNome.trim());
+    const resContratada = preencherAtividades_(sh, LINHA_ATIV_CONTRATADA_INICIO, CAPACIDADE_CONTRATADA, state.atividadesContratada, mostrarAutorContratada);
     const resContratante = preencherAtividades_(sh, LINHA_ATIV_CONTRATANTE_INICIO, CAPACIDADE_CONTRATANTE, state.atividadesContratante);
 
     inserirAssinaturaElaborador_(workbook, sh, state.assinaturaContratadaNome, state.assinaturaContratadaImagemBase64);

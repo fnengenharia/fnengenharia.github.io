@@ -213,12 +213,15 @@ const RdoPreviewOffline = (function () {
   // orçamento de "linhas" já usado em excel-fill.js/preencherAtividades_,
   // reaproveitando RdoExcel.estimarLinhasAtividade) - cada item pode gastar
   // mais de uma linha física se o texto for longo.
-  function desenharAtividades_(doc, linhaInicio, capacidadeSlots, itens) {
+  // mostrarAutor: mesmo significado de excel-fill.js/preencherAtividades_
+  // (sufixa "(Nome)" só quando o RDO passou por revisão interna).
+  function desenharAtividades_(doc, linhaInicio, capacidadeSlots, itens, mostrarAutor) {
     const naoVazios = itens.filter(item => (item.discriminacao || '').trim() || item.inicio || item.fim);
     let slotsUsados = 0;
     let linhaAtual = linhaInicio;
     for (const item of naoVazios) {
-      const texto = (item.discriminacao || '').trim();
+      let texto = (item.discriminacao || '').trim();
+      if (mostrarAutor && item.autor) texto += ' (' + item.autor + ')';
       const nLinhas = (typeof RdoExcel !== 'undefined') ? RdoExcel.estimarLinhasAtividade(texto) : 1;
       if (slotsUsados + nLinhas > capacidadeSlots) break;
 
@@ -270,7 +273,8 @@ const RdoPreviewOffline = (function () {
     }
 
     desenharEfetivoEquipVeiculos_(doc, state.efetivo, state.equipamentos);
-    desenharAtividades_(doc, 30, 27, state.atividadesContratada);
+    const mostrarAutorContratada = Boolean(state.assinaturaAprovadorNome && state.assinaturaAprovadorNome.trim());
+    desenharAtividades_(doc, 30, 27, state.atividadesContratada, mostrarAutorContratada);
     desenharAtividades_(doc, 57, 16, state.atividadesContratante);
 
     // Cada assinatura é isolada no seu próprio try/catch - uma imagem

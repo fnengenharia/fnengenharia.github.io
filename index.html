@@ -44,6 +44,14 @@
     </div>
   </div>
 
+  <div id="cartao-aprovacoes-internas" style="display:none;">
+    <h3 class="subtitulo-perfil">RDOs para revisar
+      <span id="badge-aprovacoes-internas" class="badge-aba badge-inline" style="display:none;"></span>
+    </h3>
+    <div id="lista-aprovacoes-internas"></div>
+    <p class="orcamento-info" id="aprovacoes-internas-sem-itens" style="display:none;">Nenhum RDO aguardando revisão.</p>
+  </div>
+
   <div id="perfil-carregando" class="status">Carregando seus RDOs...</div>
   <div id="perfil-erro" class="status erro" style="display:none;"></div>
 
@@ -248,7 +256,7 @@
     </div>
   </details>
 
-  <details class="secao-formulario">
+  <details class="secao-formulario" id="secao-assinaturas-envio">
     <summary>
       <svg class="icone-secao" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25z"/><path d="M14.5 5.9l3.6 3.6 2-2a1.5 1.5 0 0 0 0-2.12l-1.48-1.48a1.5 1.5 0 0 0-2.12 0l-2 2z"/></svg>
       <span class="numero-secao">5</span>
@@ -273,7 +281,7 @@
         </div>
       </div>
 
-      <div class="subsecao">
+      <div class="subsecao" id="subsecao-assinatura-contratante">
         <h3>Assinatura do Contratante</h3>
         <p class="orcamento-info">Se o representante do Contratante estiver na obra agora, ele assina aqui embaixo. Se não estiver, marque "Contratante irá verificar o RDO em seu E-mail" logo abaixo, ao lado do botão de pré-visualizar - um dos dois é obrigatório.</p>
         <label for="campo-nome-assinante">Nome de quem está assinando</label>
@@ -294,15 +302,21 @@
         <h3>E-mail e Envio</h3>
         <label for="campo-email-contratante">E-mail do responsável da Contratante</label>
         <input type="email" id="campo-email-contratante" placeholder="email@exemplo.com" inputmode="email" autocomplete="off">
-        <p class="orcamento-info">Usado como cópia (CC) se o Contratante assinar na hora, ou como destino do link de aprovação se marcar a caixa abaixo.</p>
-        <label class="linha-checkbox">
-          <input type="checkbox" id="campo-aprovacao-contratante">
-          Contratante irá verificar o RDO em seu E-mail
-        </label>
-        <p class="orcamento-info" id="aviso-aprovacao-contratante" style="display:none;">
-          O Contratante vai receber um e-mail com o PDF e um link pra escrever as
-          atividades da Contratante e assinar. O RDO final só é enviado (pra você
-          e pro Contratante) depois que ele concluir por lá.
+        <p class="orcamento-info" id="info-email-contratante-envio">Usado como cópia (CC) se o Contratante assinar na hora, ou como destino do link de aprovação se marcar a caixa abaixo.</p>
+        <div id="bloco-aprovacao-contratante">
+          <label class="linha-checkbox">
+            <input type="checkbox" id="campo-aprovacao-contratante">
+            Contratante irá verificar o RDO em seu E-mail
+          </label>
+          <p class="orcamento-info" id="aviso-aprovacao-contratante" style="display:none;">
+            O Contratante vai receber um e-mail com o PDF e um link pra escrever as
+            atividades da Contratante e assinar. O RDO final só é enviado (pra você
+            e pro Contratante) depois que ele concluir por lá.
+          </p>
+        </div>
+        <p class="orcamento-info" id="aviso-elaborador-aprovacao-interna" style="display:none;">
+          Como você é elaborador, este RDO fica salvo aguardando um administrador
+          revisar e enviar pro Contratante - ele não vai direto pro cliente.
         </p>
         <button type="button" id="btn-gerar" class="botao-principal">Pré-visualizar RDO</button>
         <div id="status-envio" class="status" aria-live="polite"></div>

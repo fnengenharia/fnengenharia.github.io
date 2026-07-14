@@ -285,8 +285,11 @@ const RdoApi = (function () {
     return postJson_({ action: 'reservarNumero', cliente, obra });
   }
 
-  function enviarRDO({ cliente, obra, data, xlsxBase64, pdfBase64, fileName, emailContratante, login }) {
-    return postJson_({ action: 'enviarRDO', cliente, obra, data, xlsxBase64, pdfBase64, fileName, emailContratante, login });
+  // tokenAprovacaoInterna/loginAprovador/nomeAprovador (14/07/2026, opcionais)
+  // - só quando este envio conclui uma revisão de aprovação interna (ver
+  // [[project_rdo_app]] release de papéis de usuário).
+  function enviarRDO({ cliente, obra, data, xlsxBase64, pdfBase64, fileName, emailContratante, login, tokenAprovacaoInterna, loginAprovador, nomeAprovador }) {
+    return postJson_({ action: 'enviarRDO', cliente, obra, data, xlsxBase64, pdfBase64, fileName, emailContratante, login, tokenAprovacaoInterna, loginAprovador, nomeAprovador });
   }
 
   function previsualizarRDO({ xlsxBase64, fileName }) {
@@ -301,8 +304,22 @@ const RdoApi = (function () {
   }
 
   // Aprovação do Contratante por e-mail (11/07) - ver www/aprovacao.html.
-  function enviarParaAprovacao({ cliente, obra, data, xlsxBase64, pdfBase64, fileName, stateJSON, emailResponsavel, login }) {
-    return postJson_({ action: 'enviarParaAprovacao', cliente, obra, data, xlsxBase64, pdfBase64, fileName, stateJSON, emailResponsavel, login });
+  // tokenAprovacaoInterna/loginAprovador/nomeAprovador: mesmo significado de enviarRDO acima.
+  function enviarParaAprovacao({ cliente, obra, data, xlsxBase64, pdfBase64, fileName, stateJSON, emailResponsavel, login, tokenAprovacaoInterna, loginAprovador, nomeAprovador }) {
+    return postJson_({ action: 'enviarParaAprovacao', cliente, obra, data, xlsxBase64, pdfBase64, fileName, stateJSON, emailResponsavel, login, tokenAprovacaoInterna, loginAprovador, nomeAprovador });
+  }
+
+  // Aprovação INTERNA (14/07/2026) - ver [[project_rdo_app]].
+  function salvarParaAprovacaoInterna({ cliente, obra, data, stateJSON, login, senha }) {
+    return postJson_({ action: 'salvarParaAprovacaoInterna', cliente, obra, data, stateJSON, login, senha });
+  }
+
+  function listarAprovacoesInternas(login, senha) {
+    return postJson_({ action: 'listarAprovacoesInternas', login, senha });
+  }
+
+  function buscarAprovacaoInterna(login, senha, token) {
+    return postJson_({ action: 'buscarAprovacaoInterna', login, senha, token });
   }
 
   async function buscarAprovacao(token) {
@@ -394,6 +411,7 @@ const RdoApi = (function () {
     getObras, getEquipamentos, getVeiculos, reservarNumero, enviarRDO, previsualizarRDO, gerarLinkPreview,
     getVersaoApp, logErro, enviarParaAprovacao, buscarAprovacao, finalizarAprovacao,
     buscarCliente, buscarNomeCliente, cadastrarCliente, login, salvarAssinaturaUsuario,
-    meusRdos, buscarPdfPorId, reenviarLinkAprovacao, corrigirEmailAprovacao
+    meusRdos, buscarPdfPorId, reenviarLinkAprovacao, corrigirEmailAprovacao,
+    salvarParaAprovacaoInterna, listarAprovacoesInternas, buscarAprovacaoInterna
   };
 })();

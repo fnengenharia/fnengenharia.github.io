@@ -6,7 +6,7 @@
 // cada release (o mesmo valor deve ser espelhado em APP_VERSAO_ATUAL no
 // Code.gs, que é o que a atualização automática usa pra saber se tem
 // versão nova pra baixar).
-const VERSAO_APP = 'BETA 0.9.3';
+const VERSAO_APP = 'BETA 0.9.4';
 document.getElementById('versao-app').textContent = VERSAO_APP;
 
 // ---------------------------------------------------------------------------
@@ -160,13 +160,21 @@ const state = {
   // enorme). O limite real de quantas cabem no RDO gerado nao e um numero
   // fixo de itens, e sim de "linhas" (RdoExcel.CAPACIDADE_CONTRATADA/
   // CAPACIDADE_CONTRATANTE) - um item com texto longo consome mais de uma.
-  atividadesContratada: [{ inicio: '', fim: '', discriminacao: '' }],
+  atividadesContratada: [{ inicio: '', fim: '', discriminacao: '', autor: '' }],
   atividadesContratante: [{ inicio: '', fim: '', discriminacao: '' }],
   // Nome/assinatura da Contratada não são mais digitados/desenhados a
   // cada RDO (11/07 noite) - vêm do LOGIN do usuário (ver
   // CHAVE_SESSAO_USUARIO), cadastrados uma única vez no primeiro acesso.
+  // Este par (assinaturaContratadaNome/ImagemBase64) é o "Elaborador" no
+  // modelo novo (13/07) - quem criou/preencheu o RDO. Um segundo par,
+  // assinaturaAprovadorNome/ImagemBase64 (14/07, papéis de usuário), só é
+  // preenchido quando um administrador finaliza uma revisão de aprovação
+  // interna de um RDO que NÃO é seu - usa a assinatura já salva do login
+  // dele, nunca desenhada na hora (ver [[project_rdo_app]]).
   assinaturaContratadaNome: '',
   assinaturaContratadaImagemBase64: null,
+  assinaturaAprovadorNome: '',
+  assinaturaAprovadorImagemBase64: null,
   assinaturaNome: '',
   assinaturaImagemBase64: null, // preenchido só na hora de gerar, a partir do canvas
   assinaturaConcordo: false,
@@ -183,6 +191,11 @@ const state = {
 
 let obrasDisponiveis = [];
 let numeroReservado = null;
+// Aprovação interna (14/07/2026) - guarda de quem é o RDO quando um
+// administrador está revisando um salvo por um elaborador (null no fluxo
+// normal). Declarado cedo porque renderizarListaAtividades (chamada já na
+// inicialização do módulo) referencia essa variável.
+let aprovacaoInternaAtual_ = null;
 
 function autoGrow(textarea) {
   textarea.style.height = 'auto';
@@ -237,6 +250,10 @@ const el = {
   concordo: document.getElementById('campo-concordo'),
   aprovacaoContratante: document.getElementById('campo-aprovacao-contratante'),
   avisoAprovacaoContratante: document.getElementById('aviso-aprovacao-contratante'),
+  subsecaoAssinaturaContratante: document.getElementById('subsecao-assinatura-contratante'),
+  blocoAprovacaoContratante: document.getElementById('bloco-aprovacao-contratante'),
+  avisoElaboradorAprovacaoInterna: document.getElementById('aviso-elaborador-aprovacao-interna'),
+  secaoAssinaturasEnvio: document.getElementById('secao-assinaturas-envio'),
   btnGerar: document.getElementById('btn-gerar'),
   status: document.getElementById('status-envio'),
   cartaoPreview: document.getElementById('cartao-preview'),
@@ -286,7 +303,12 @@ const el = {
   perfilPendentes: document.getElementById('perfil-pendentes'),
   perfilSemPendentes: document.getElementById('perfil-sem-pendentes'),
   perfilAprovados: document.getElementById('perfil-aprovados'),
-  perfilSemAprovados: document.getElementById('perfil-sem-aprovados')
+  perfilSemAprovados: document.getElementById('perfil-sem-aprovados'),
+
+  cartaoAprovacoesInternas: document.getElementById('cartao-aprovacoes-internas'),
+  badgeAprovacoesInternas: document.getElementById('badge-aprovacoes-internas'),
+  listaAprovacoesInternas: document.getElementById('lista-aprovacoes-internas'),
+  aprovacoesInternasSemItens: document.getElementById('aprovacoes-internas-sem-itens')
 };
 
 // ---------------------------------------------------------------------------
@@ -531,6 +553,14 @@ function renderizarListaAtividades(cfg) {
   });
 
   atualizarOrcamento(itens, capacidade, elOrcamento, btnAdd);
+
+  // Revisão de aprovação interna (14/07/2026): re-renderizar a lista da
+  // Contratada (ex: depois de "+ Adicionar" ou remover uma linha nova)
+  // reconstrói o DOM do zero - reaplica o travamento das linhas que já
+  // tinham autor antes desta sessão, senão elas voltariam editáveis.
+  if (container === el.listaAtivContratada && aprovacaoInternaAtual_) {
+    aplicarTravamentoRevisaoInterna_(true, perfilAtual_());
+  }
 }
 
 const cfgAtivContratada = {
@@ -548,8 +578,25 @@ const cfgAtivContratante = {
   capacidade: RdoExcel.CAPACIDADE_CONTRATANTE
 };
 
+// Autoria por linha (14/07/2026, papéis de usuário) - cada atividade da
+// Contratada carrega quem escreveu ela (usado só quando o RDO passa pela
+// revisão de aprovação interna - ver mostrarAutorContratada em
+// excel-fill.js/preview-offline.js). Preenche o autor de qualquer item já
+// com conteúdo mas ainda sem autor (nunca sobrescreve um autor já
+// gravado) - chamado tanto quando o elaborador salva pra aprovação interna
+// quanto quando um administrador finaliza depois, então cada linha acaba
+// carimbada com quem a escreveu de fato, sem precisar rastrear o clique
+// exato de "+ Adicionar".
+function preencherAutorPadrao_(itens, nome) {
+  if (!nome) return;
+  itens.forEach(item => {
+    const temConteudo = (item.discriminacao || '').trim() || item.inicio || item.fim;
+    if (temConteudo && !item.autor) item.autor = nome;
+  });
+}
+
 el.btnAddContratada.addEventListener('click', () => {
-  state.atividadesContratada.push({ inicio: '', fim: '', discriminacao: '' });
+  state.atividadesContratada.push({ inicio: '', fim: '', discriminacao: '', autor: '' });
   renderizarListaAtividades(cfgAtivContratada);
 });
 el.btnAddContratante.addEventListener('click', () => {
@@ -884,6 +931,14 @@ function carregarSessaoUsuario_() {
   }
 }
 
+// 'elaborador' | 'administrador' | 'admin_master' - default mais
+// restritivo se a sessão não tiver o campo (sessão antiga, antes desta
+// mudança) - ver [[project_rdo_app]] release de papéis de usuário.
+function perfilAtual_() {
+  const sessao = carregarSessaoUsuario_();
+  return (sessao && sessao.perfil) || 'elaborador';
+}
+
 // Aplica a sessão (nome+assinatura já cadastrados) no formulário e mostra
 // o app - chamado tanto na abertura (sessão já existente) quanto logo
 // depois de um login/cadastro de assinatura bem-sucedido.
@@ -895,7 +950,20 @@ function aplicarSessaoNoFormulario_(sessao) {
   el.cartaoLogin.style.display = 'none';
   el.cartaoPrimeiraAssinatura.style.display = 'none';
   el.barraAbas.style.display = 'flex';
+  aplicarPerfilNaUI_(sessao.perfil);
   mostrarAba_('rdo');
+}
+
+// Papéis de usuário (14/07/2026) - elaborador perde por completo a UI de
+// mandar o RDO direto pro cliente (nem assinatura presencial, nem
+// aprovação por e-mail): o RDO dele sempre para em "aguardando aprovação
+// interna" primeiro, só um administrador decide como/quando isso vai pro
+// cliente. Ver [[project_rdo_app]] release de papéis de usuário.
+function aplicarPerfilNaUI_(perfil) {
+  const ehElaborador = (perfil || 'elaborador') === 'elaborador';
+  el.subsecaoAssinaturaContratante.style.display = ehElaborador ? 'none' : 'block';
+  el.blocoAprovacaoContratante.style.display = ehElaborador ? 'none' : 'block';
+  el.avisoElaboradorAprovacaoInterna.style.display = ehElaborador ? 'block' : 'none';
 }
 
 function mostrarTelaLogin_() {
@@ -1311,13 +1379,13 @@ el.btnEntrar.addEventListener('click', async () => {
     }
 
     if (resp.assinaturaBase64) {
-      const sessao = { login, senha, nome: resp.nome, assinaturaBase64: resp.assinaturaBase64 };
+      const sessao = { login, senha, nome: resp.nome, assinaturaBase64: resp.assinaturaBase64, perfil: resp.perfil };
       salvarSessaoUsuario_(sessao);
       aplicarSessaoNoFormulario_(sessao);
     } else {
       // Primeiro login desse usuário (Paulo só cadastrou Login/Senha/Nome
       // na planilha) - pede a assinatura antes de liberar o app.
-      sessaoTemp_ = { login, senha, nome: resp.nome };
+      sessaoTemp_ = { login, senha, nome: resp.nome, perfil: resp.perfil };
       el.cartaoLogin.style.display = 'none';
       el.cartaoPrimeiraAssinatura.style.display = 'block';
     }
@@ -1348,7 +1416,7 @@ el.btnSalvarPrimeiraAssinatura.addEventListener('click', async () => {
       el.statusPrimeiraAssinatura.className = 'status erro';
       return;
     }
-    const sessao = { login: sessaoTemp_.login, senha: sessaoTemp_.senha, nome: sessaoTemp_.nome, assinaturaBase64: base64 };
+    const sessao = { login: sessaoTemp_.login, senha: sessaoTemp_.senha, nome: sessaoTemp_.nome, assinaturaBase64: base64, perfil: sessaoTemp_.perfil };
     salvarSessaoUsuario_(sessao);
     aplicarSessaoNoFormulario_(sessao);
     sessaoTemp_ = null;
@@ -1597,6 +1665,163 @@ async function carregarPerfil_() {
     el.perfilErro.textContent = 'Erro: ' + (err && err.message ? err.message : err);
     RdoApi.logErro('carregar_perfil', err && err.message ? err.message : String(err));
   }
+
+  // Papéis de usuário (14/07/2026): só administrador/admin_master veem o
+  // card "RDOs para revisar" - visão global, sem filtro de obra (decisão
+  // do Paulo). Falha aqui não deve travar o resto do Perfil - card some
+  // silenciosamente se der erro (best-effort).
+  if (sessao.perfil === 'administrador' || sessao.perfil === 'admin_master') {
+    el.cartaoAprovacoesInternas.style.display = 'block';
+    try {
+      const respInternas = await RdoApi.listarAprovacoesInternas(sessao.login, sessao.senha);
+      if (respInternas.ok) renderizarListaAprovacoesInternas_(respInternas.pendentes);
+    } catch (err) {
+      console.error('Falha ao carregar RDOs para revisar:', err);
+    }
+  } else {
+    el.cartaoAprovacoesInternas.style.display = 'none';
+  }
+}
+
+function renderizarListaAprovacoesInternas_(pendentes) {
+  el.listaAprovacoesInternas.innerHTML = '';
+  el.badgeAprovacoesInternas.style.display = pendentes.length > 0 ? 'inline-block' : 'none';
+  el.badgeAprovacoesInternas.textContent = String(pendentes.length);
+  el.aprovacoesInternasSemItens.style.display = pendentes.length === 0 ? 'block' : 'none';
+
+  pendentes.forEach(item => {
+    const linha = document.createElement('button');
+    linha.type = 'button';
+    linha.className = 'linha-obra-perfil';
+    linha.innerHTML = `<strong>${item.obra}</strong> (${item.cliente})<br>` +
+      `Elaborado por ${item.nomeElaborador} - ${item.data || ''}`;
+    linha.addEventListener('click', () => abrirRevisaoInterna_(item.token));
+    el.listaAprovacoesInternas.appendChild(linha);
+  });
+}
+
+// aprovacaoInternaAtual_ já declarado no topo do arquivo (ver comentário lá).
+
+async function abrirRevisaoInterna_(token) {
+  const sessao = carregarSessaoUsuario_();
+  if (!sessao) return;
+  try {
+    const resp = await RdoApi.buscarAprovacaoInterna(sessao.login, sessao.senha, token);
+    if (!resp.ok) { alert(resp.erro || 'Não consegui abrir esse RDO.'); return; }
+
+    const s = JSON.parse(resp.stateJSON);
+
+    // Mesmo padrão de restaurarEstadoEmAndamento_ - copia campo a campo do
+    // state salvo pro state atual, depois sincroniza a tela.
+    state.contratante = s.contratante || '';
+    state.obra = s.obra || '';
+    state.servico = s.servico || '';
+    state.objetoContrato = s.objetoContrato || '';
+    state.local = s.local || '';
+    state.data = s.data || '';
+    state.observacoes = s.observacoes || '';
+    state.emailContratante = s.emailContratante || '';
+    state.tempo = s.tempo || state.tempo;
+    state.assinaturaNome = s.assinaturaNome || '';
+    state.assinaturaConcordo = Boolean(s.assinaturaConcordo);
+    state.aprovacaoContratante = Boolean(s.aprovacaoContratante);
+    // Elaborador (assinaturaContratadaNome/ImagemBase64) vem do state
+    // salvo - é a assinatura de quem CRIOU o RDO, não pode ser
+    // sobrescrita pela sessão de quem está revisando.
+    state.assinaturaContratadaNome = s.assinaturaContratadaNome || '';
+    state.assinaturaContratadaImagemBase64 = s.assinaturaContratadaImagemBase64 || null;
+
+    state.efetivo.length = 0;
+    (s.efetivo || []).forEach(item => state.efetivo.push(item));
+    state.equipamentos.length = 0;
+    (s.equipamentos || []).forEach(item => state.equipamentos.push(item));
+    state.atividadesContratada.length = 0;
+    (s.atividadesContratada && s.atividadesContratada.length ? s.atividadesContratada : [{ inicio: '', fim: '', discriminacao: '', autor: '' }]).forEach(item => state.atividadesContratada.push(item));
+    state.atividadesContratante.length = 0;
+    (s.atividadesContratante && s.atividadesContratante.length ? s.atividadesContratante : [{ inicio: '', fim: '', discriminacao: '' }]).forEach(item => state.atividadesContratante.push(item));
+
+    // Aprovador = quem está revisando agora - assinatura já salva do
+    // próprio login (nunca desenhada na hora, decisão já confirmada).
+    state.assinaturaAprovadorNome = sessao.nome;
+    state.assinaturaAprovadorImagemBase64 = sessao.assinaturaBase64;
+
+    el.contratante.value = state.contratante;
+    el.obra.value = state.obra;
+    el.servico.value = state.servico;
+    el.objeto.value = state.objetoContrato;
+    el.trecho.value = state.local;
+    el.emailContratante.value = state.emailContratante;
+    el.data.value = state.data;
+    el.observacoes.value = state.observacoes;
+    autoGrow(el.observacoes);
+
+    document.querySelectorAll('.balao').forEach(botao => {
+      const marcado = Boolean(state.tempo[botao.dataset.tempo] && state.tempo[botao.dataset.tempo][botao.dataset.periodo]);
+      botao.classList.toggle('marcado', marcado);
+    });
+    document.querySelectorAll('.mm-chuva').forEach(input => {
+      input.value = (state.tempo.mm && state.tempo.mm[input.dataset.periodo]) || '';
+    });
+
+    renderizarListaQuantCrescente(cfgEfetivo);
+    renderizarListaQuantCrescente(cfgEquipamentos);
+    renderizarListaAtividades(cfgAtivContratada);
+    renderizarListaAtividades(cfgAtivContratante);
+
+    el.assinaturaContratadaInfo.textContent = 'Elaborado por: ' + (s.assinaturaContratadaNome || resp.nomeElaborador || '');
+    el.nomeAssinante.value = state.assinaturaNome;
+    el.concordo.checked = state.assinaturaConcordo;
+    el.aprovacaoContratante.checked = state.aprovacaoContratante;
+    el.avisoAprovacaoContratante.style.display = state.aprovacaoContratante ? 'block' : 'none';
+
+    aprovacaoInternaAtual_ = { token, loginElaborador: resp.loginElaborador, nomeElaborador: resp.nomeElaborador };
+    aplicarTravamentoRevisaoInterna_(true, sessao.perfil);
+
+    mostrarAba_('rdo');
+    document.querySelectorAll('.secao-formulario').forEach(d => { d.open = true; });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (err) {
+    console.error(err);
+    alert('Erro ao abrir revisão: ' + (err && err.message ? err.message : err));
+    RdoApi.logErro('abrir_revisao_interna', err && err.message ? err.message : String(err));
+  }
+}
+
+// Trava (readonly/disabled) todos os campos de identificação/condições/
+// efetivo/atividades-Contratante do RDO carregado pra revisão - um
+// administrador comum só pode ACRESCENTAR atividades da Contratada (nunca
+// editar o que o elaborador escreveu); admin_master pode editar qualquer
+// coisa (bypass total). A seção 5 (assinaturas/envio) e a lista de
+// atividades da Contratada ficam sempre liberadas (é o único lugar onde um
+// administrador comum pode agir).
+function aplicarTravamentoRevisaoInterna_(travar, perfil) {
+  const bypassTotal = perfil === 'admin_master';
+  const form = el.formRdo;
+  if (!form) return;
+
+  form.querySelectorAll('input, select, textarea, button').forEach(campo => {
+    if (!travar || bypassTotal) { campo.disabled = false; return; }
+    if (campo.closest('#lista-atividades-contratada')) return; // linhas já colocadas - ver trava por linha abaixo
+    if (campo.id === 'btn-add-contratada') return;
+    if (campo.closest('#secao-assinaturas-envio')) return;
+    campo.disabled = true;
+  });
+
+  // Dentro da lista da Contratada: linhas que já tinham autor ANTES desta
+  // sessão de revisão (ou seja, escritas pelo elaborador ou por uma
+  // revisão anterior) ficam com o texto travado e sem botão de remover -
+  // só uma linha NOVA (adicionada agora, autor ainda vazio) pode ser
+  // editada/removida por um administrador comum.
+  if (travar && !bypassTotal) {
+    document.querySelectorAll('#lista-atividades-contratada .linha-atividade').forEach((linha, i) => {
+      const item = state.atividadesContratada[i];
+      if (!item || !item.autor) return; // linha nova, ainda sem autor - liberada
+      linha.querySelectorAll('input, textarea').forEach(campo => { campo.disabled = true; });
+      const btnRemover = linha.querySelector('.btn-remover-atividade');
+      if (btnRemover) btnRemover.style.display = 'none';
+      linha.classList.add('linha-atividade-travada');
+    });
+  }
 }
 
 el.abaRdo.addEventListener('click', () => mostrarAba_('rdo'));
@@ -1652,6 +1877,10 @@ function validar() {
   if (!state.assinaturaContratadaNome.trim() || !state.assinaturaContratadaImagemBase64) {
     return 'Sessão de login perdida - recarregue a página e entre de novo.';
   }
+  // Elaborador (14/07/2026, papéis de usuário) não preenche nada do
+  // Contratante aqui - o RDO sempre vai pra aprovação interna primeiro, um
+  // administrador que decide depois como mandar pro cliente.
+  if (perfilAtual_() === 'elaborador') return null;
   // Confirmação do Contratante virou OBRIGATÓRIA (pedido do Paulo,
   // 12/07): ou ele assina na hora (nome + assinatura + declaração de
   // representante), ou o RDO vai pra aprovação por e-mail (checkbox
@@ -1832,6 +2061,21 @@ configurarZoomIframe_(el.visualizadorApp, el.btnZoomMaisApp, el.btnZoomMenosApp)
 // checkbox de aprovação) volta a ficar em branco, como se o app tivesse
 // acabado de abrir pra um RDO novo.
 async function resetarParaProximoRdo_() {
+  // Se este RDO era uma revisão de aprovação interna, o envio já concluiu
+  // (marcarAprovacaoInternaProcessada_ no backend) - destrava o formulário
+  // e volta a assinatura da Contratada pro dono da sessão ATUAL (durante a
+  // revisão ela tinha o nome/assinatura do elaborador original emprestada).
+  if (aprovacaoInternaAtual_) {
+    aprovacaoInternaAtual_ = null;
+    aplicarTravamentoRevisaoInterna_(false, perfilAtual_());
+    const sessaoAtual = carregarSessaoUsuario_();
+    if (sessaoAtual) {
+      state.assinaturaContratadaNome = sessaoAtual.nome;
+      state.assinaturaContratadaImagemBase64 = sessaoAtual.assinaturaBase64;
+      el.assinaturaContratadaInfo.textContent = 'Assinando como: ' + sessaoAtual.nome;
+    }
+  }
+
   state.data = '';
   el.data.value = '';
 
@@ -1848,12 +2092,15 @@ async function resetarParaProximoRdo_() {
   el.observacoes.style.height = 'auto';
 
   state.atividadesContratada.length = 0;
-  state.atividadesContratada.push({ inicio: '', fim: '', discriminacao: '' });
+  state.atividadesContratada.push({ inicio: '', fim: '', discriminacao: '', autor: '' });
   renderizarListaAtividades(cfgAtivContratada);
 
   state.atividadesContratante.length = 0;
   state.atividadesContratante.push({ inicio: '', fim: '', discriminacao: '' });
   renderizarListaAtividades(cfgAtivContratante);
+
+  state.assinaturaAprovadorNome = '';
+  state.assinaturaAprovadorImagemBase64 = null;
 
   assinaturaContratante.limpar();
   el.nomeAssinante.value = '';
@@ -1960,9 +2207,11 @@ async function atualizarPreviewInline_() {
       el.statusConfirmacao.textContent = '';
     }
 
-    el.btnConfirmarEnvio.textContent = state.aprovacaoContratante
-      ? 'ENVIAR À CONTRATANTE PARA APROVAÇÃO FINAL'
-      : 'Confirmar e Enviar por E-mail';
+    el.btnConfirmarEnvio.textContent = perfilAtual_() === 'elaborador'
+      ? 'Salvar para Aprovação Interna'
+      : (state.aprovacaoContratante
+        ? 'ENVIAR À CONTRATANTE PARA APROVAÇÃO FINAL'
+        : 'Confirmar e Enviar por E-mail');
   } catch (err) {
     console.error(err);
     el.statusConfirmacao.textContent = 'Erro ao atualizar a prévia: ' + (err && err.message ? err.message : err);
@@ -2023,7 +2272,12 @@ el.btnAbrirPreviaOffline.addEventListener('click', async () => {
 // duplicar a lógica. `numeroJaReservado` reaproveita o número já mostrado
 // na prévia (fluxo normal, online); se vier null (RDO que ficou na fila
 // offline, nunca teve prévia com número real), reserva um novo agora.
-async function enviarRdoAoBackend_(stateParaEnviar, loginParaEnviar, numeroJaReservado) {
+// revisaoInterna (14/07/2026, opcional) = { tokenAprovacaoInterna,
+// loginAprovador, nomeAprovador } - só quando este envio conclui uma
+// revisão de aprovação interna (ver [[project_rdo_app]]). `loginParaEnviar`
+// continua sendo o dono/elaborador original do RDO nesse caso (não quem
+// está revisando) - preserva a atribuição em Meu Perfil/pasta do Drive.
+async function enviarRdoAoBackend_(stateParaEnviar, loginParaEnviar, numeroJaReservado, revisaoInterna) {
   const numero = numeroJaReservado != null
     ? numeroJaReservado
     : (await RdoApi.reservarNumero(stateParaEnviar.contratante, stateParaEnviar.obra)).numero;
@@ -2032,9 +2286,15 @@ async function enviarRdoAoBackend_(stateParaEnviar, loginParaEnviar, numeroJaRes
   const respPdfFinal = await RdoApi.previsualizarRDO({ xlsxBase64: xlsxFinalBase64, fileName: fileNameFinal });
   const pdfBase64 = respPdfFinal.pdfBase64;
 
+  const camposRevisao = revisaoInterna ? {
+    tokenAprovacaoInterna: revisaoInterna.tokenAprovacaoInterna,
+    loginAprovador: revisaoInterna.loginAprovador,
+    nomeAprovador: revisaoInterna.nomeAprovador
+  } : {};
+
   let resp;
   if (stateParaEnviar.aprovacaoContratante) {
-    resp = await RdoApi.enviarParaAprovacao({
+    resp = await RdoApi.enviarParaAprovacao(Object.assign({
       cliente: stateParaEnviar.contratante,
       obra: stateParaEnviar.obra,
       data: stateParaEnviar.data,
@@ -2044,9 +2304,9 @@ async function enviarRdoAoBackend_(stateParaEnviar, loginParaEnviar, numeroJaRes
       stateJSON: JSON.stringify(stateParaEnviar),
       emailResponsavel: stateParaEnviar.emailContratante,
       login: loginParaEnviar
-    });
+    }, camposRevisao));
   } else {
-    resp = await RdoApi.enviarRDO({
+    resp = await RdoApi.enviarRDO(Object.assign({
       cliente: stateParaEnviar.contratante,
       obra: stateParaEnviar.obra,
       data: stateParaEnviar.data,
@@ -2055,7 +2315,7 @@ async function enviarRdoAoBackend_(stateParaEnviar, loginParaEnviar, numeroJaRes
       fileName: fileNameFinal,
       emailContratante: stateParaEnviar.emailContratante,
       login: loginParaEnviar
-    });
+    }, camposRevisao));
   }
   return { resp, numero, pdfBase64, fileNameFinal: fileNameFinal.replace(/\.xlsx$/i, '.pdf') };
 }
@@ -2176,6 +2436,34 @@ el.btnConfirmarEnvio.addEventListener('click', async () => {
     const sessaoAtual = carregarSessaoUsuario_();
     const loginAtual = sessaoAtual ? sessaoAtual.login : '';
 
+    // Elaborador (14/07/2026, papéis de usuário): não manda pro cliente -
+    // só salva pra um administrador revisar depois. Sem fila offline pra
+    // este caminho ainda (precisa de internet) - RDO comum
+    // (Confirmar/Enviar) continua com fila offline normalmente.
+    if (perfilAtual_() === 'elaborador') {
+      if (!RdoConectividade.estaOnline()) {
+        el.statusConfirmacao.textContent = 'Sem internet - conecte pra salvar para aprovação interna.';
+        el.statusConfirmacao.className = 'status erro';
+        return;
+      }
+      el.statusConfirmacao.textContent = 'Salvando para aprovação interna...';
+      el.statusConfirmacao.className = 'status';
+      preencherAutorPadrao_(state.atividadesContratada, sessaoAtual.nome);
+      const resp = await RdoApi.salvarParaAprovacaoInterna({
+        cliente: state.contratante,
+        obra: state.obra,
+        data: state.data,
+        stateJSON: JSON.stringify(state),
+        login: sessaoAtual.login,
+        senha: sessaoAtual.senha
+      });
+      if (!resp.ok) throw new Error(resp.erro || 'Não consegui salvar.');
+      el.statusConfirmacao.textContent = 'RDO salvo! Um administrador vai revisar e enviar pro Contratante.';
+      el.statusConfirmacao.className = 'status sucesso';
+      await resetarParaProximoRdo_();
+      return;
+    }
+
     if (!RdoConectividade.estaOnline()) {
       // Sem internet - guarda o RDO inteiro no aparelho como pendente
       // (sincronizarFilaOffline_ manda de verdade quando a conexão
@@ -2198,10 +2486,26 @@ el.btnConfirmarEnvio.addEventListener('click', async () => {
 
     el.statusConfirmacao.textContent = 'Gerando RDO final...';
     el.statusConfirmacao.className = 'status';
+
+    // Revisão de aprovação interna (14/07/2026): o dono do RDO continua
+    // sendo o elaborador original (login/Drive/Meu Perfil); quem revisou
+    // agora vira o Aprovador. Rows novas ganham autor = quem revisou.
+    let loginParaEnviar = loginAtual;
+    let revisaoInterna = null;
+    if (aprovacaoInternaAtual_) {
+      preencherAutorPadrao_(state.atividadesContratada, sessaoAtual ? sessaoAtual.nome : '');
+      loginParaEnviar = aprovacaoInternaAtual_.loginElaborador;
+      revisaoInterna = {
+        tokenAprovacaoInterna: aprovacaoInternaAtual_.token,
+        loginAprovador: loginAtual,
+        nomeAprovador: sessaoAtual ? sessaoAtual.nome : ''
+      };
+    }
+
     // Gera a partir do state ATUAL - nunca reaproveita o que foi gerado só
     // pra exibir a prévia (evita mandar uma versão desatualizada se a
     // pessoa editou algo entre pré-visualizar e confirmar).
-    const { resp, pdfBase64, fileNameFinal } = await enviarRdoAoBackend_(state, loginAtual, previewNumeroAtual);
+    const { resp, pdfBase64, fileNameFinal } = await enviarRdoAoBackend_(state, loginParaEnviar, previewNumeroAtual, revisaoInterna);
     previewPdfBase64 = pdfBase64;
     previewFileName = fileNameFinal;
 
