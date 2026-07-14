@@ -19,27 +19,35 @@
 // LINHA_ATIV_CONTRATADA/CONTRATANTE_INICIO) pra saber onde cada campo cai.
 // Só precisa remedir se o modelo_rdo.xlsx mudar de layout de novo.
 const RdoPreviewOffline = (function () {
+  // Remedido em 13/07/2026 (modelo trocado - ver project_rdo_app release da
+  // troca de modelo): blocos de atividades cresceram e a área de assinatura
+  // foi pra baixo (3 blocos em vez de 2). Processo de medição igual ao de
+  // sempre - via Excel COM, Rows(n).Top relativo à célula A1 (linha 1/2
+  // ficam em 0.0 porque a linha 1 é uma linha "espaçadora" oculta no
+  // modelo, sempre foi assim). Colunas NÃO mudaram (mesmas larguras de
+  // sempre), só as linhas de 30 em diante.
   const LINHA_Y_PT = {
     1: 0.0, 2: 0.0, 3: 9.0, 4: 27.0, 5: 45.0, 6: 61.2, 7: 94.8, 8: 128.4,
-    9: 144.0, 10: 157.2, 11: 170.4, 12: 183.6, 13: 196.8, 14: 210.0, 15: 223.2,
-    16: 235.8, 17: 249.0, 18: 262.2, 19: 275.4, 20: 288.6, 21: 301.8, 22: 315.0,
-    23: 328.2, 24: 341.4, 25: 354.6, 26: 367.8, 27: 381.0, 28: 394.2, 29: 407.4,
-    30: 420.6, 31: 435.6, 32: 450.6, 33: 465.6, 34: 480.6, 35: 495.6, 36: 510.6,
-    37: 525.6, 38: 540.6, 39: 555.6, 40: 570.6, 41: 585.6, 42: 600.6, 43: 615.6,
-    44: 630.6, 45: 645.6, 46: 660.6, 47: 675.6, 48: 690.6, 49: 705.6, 50: 720.6,
-    51: 735.6, 52: 750.6, 53: 765.6, 54: 780.6, 55: 795.6, 56: 810.6, 57: 825.6,
-    58: 840.6, 59: 855.6, 60: 870.6, 61: 885.6, 62: 900.6, 63: 915.6, 64: 928.8,
-    65: 942.0, 66: 955.2, 67: 968.4, 68: 981.6, 69: 995.4, 70: 1008.6, 71: 1021.8,
-    72: 1035.0
+    9: 144.0, 10: 156.6, 11: 169.2, 12: 181.8, 13: 194.4, 14: 207.6, 15: 220.8,
+    16: 233.4, 17: 246.0, 18: 258.6, 19: 271.2, 20: 283.8, 21: 296.4, 22: 309.0,
+    23: 321.6, 24: 334.2, 25: 346.8, 26: 359.4, 27: 372.0, 28: 384.6, 29: 397.8,
+    30: 411.0, 31: 426.0, 32: 441.0, 33: 456.0, 34: 471.0, 35: 486.0, 36: 501.0,
+    37: 516.0, 38: 531.0, 39: 546.0, 40: 561.0, 41: 576.0, 42: 591.0, 43: 606.0,
+    44: 621.0, 45: 636.0, 46: 651.0, 47: 666.0, 48: 681.0, 49: 696.0, 50: 711.0,
+    51: 726.0, 52: 741.0, 53: 756.0, 54: 771.0, 55: 786.0, 56: 801.0, 57: 816.0,
+    58: 831.0, 59: 846.0, 60: 861.0, 61: 876.0, 62: 891.0, 63: 906.0, 64: 921.0,
+    65: 936.0, 66: 951.0, 67: 966.0, 68: 981.0, 69: 996.0, 70: 1011.0, 71: 1026.0,
+    72: 1041.0, 73: 1056.0, 74: 1070.4, 75: 1084.8, 76: 1099.2, 77: 1114.2,
+    78: 1127.4, 79: 1140.6
   };
   const COLUNA_X_PT = {
     A: 0.0, B: 36.0, C: 72.0, D: 108.0, E: 144.0, F: 180.0, G: 216.0, H: 252.0,
     I: 282.0, J: 312.0, K: 342.0, L: 372.0, M: 375.6, N: 410.4, O: 440.4,
     P: 444.0, Q: 474.0, R: 517.2, S: 547.2, T: 554.4, U: 584.4, V: 614.4,
-    W: 661.2, FIM: 679.8
+    W: 661.2, FIM: 661.2
   };
   const LARGURA_PAGINA_PT = COLUNA_X_PT.FIM;
-  const ALTURA_PAGINA_PT = LINHA_Y_PT[72];
+  const ALTURA_PAGINA_PT = LINHA_Y_PT[79];
 
   function yTopoLinha_(linha) { return LINHA_Y_PT[linha] || 0; }
   function xColuna_(coluna) { return COLUNA_X_PT[coluna] || 0; }
@@ -238,10 +246,12 @@ const RdoPreviewOffline = (function () {
     const imgBinStr = await carregarImagemBaseBinStr_();
     doc.addImage(imgBinStr, 'JPEG', 0, 0, LARGURA_PAGINA_PT, ALTURA_PAGINA_PT);
 
+    // Modelo novo de 13/07/2026: rótulo (linha 3) e valor (linha 4) agora
+    // são células separadas - antes ficavam juntos na linha 3.
     const numeroTexto = (numero != null) ? String(numero) : '(provisório)';
-    escreverTexto_(doc, numeroTexto, 'L', 3, 10, 12, { negrito: true, padXPt: 62, limparLarguraPt: 0 });
-    escreverTexto_(doc, '0', 'R', 3, 10, 12, { padXPt: 22, limparLarguraPt: 0 });
-    escreverTexto_(doc, '1/1', 'U', 3, 9, 12, { padXPt: 40, limparLarguraPt: 0 });
+    escreverTexto_(doc, numeroTexto, 'L', 4, 10, 12, { negrito: true, padXPt: 62, limparLarguraPt: 0 });
+    escreverTexto_(doc, '0', 'R', 4, 10, 12, { padXPt: 22, limparLarguraPt: 0 });
+    escreverTexto_(doc, '1/1', 'U', 4, 9, 12, { padXPt: 40, limparLarguraPt: 0 });
 
     escreverTexto_(doc, state.contratante, 'A', 6, 10, 17, { limparLarguraPt: 372 });
     escreverTexto_(doc, state.obra, 'L', 6, 10, 17, { limparLarguraPt: 307.8 });
@@ -260,25 +270,35 @@ const RdoPreviewOffline = (function () {
     }
 
     desenharEfetivoEquipVeiculos_(doc, state.efetivo, state.equipamentos);
-    desenharAtividades_(doc, 30, 23, state.atividadesContratada);
-    desenharAtividades_(doc, 53, 10, state.atividadesContratante);
+    desenharAtividades_(doc, 30, 27, state.atividadesContratada);
+    desenharAtividades_(doc, 57, 16, state.atividadesContratante);
 
     // Cada assinatura é isolada no seu próprio try/catch - uma imagem
     // corrompida/inválida não pode derrubar o PDF inteiro (o resto dos
     // dados preenchidos continua valendo mais que travar tudo por causa
-    // só da assinatura).
+    // só da assinatura). Âncoras espelham excel-fill.js (Elaborador/
+    // Aprovador/Contratante, modelo novo de 13/07/2026).
     if (state.assinaturaContratadaImagemBase64) {
       try {
-        const pos = posicaoAncoraPt_(3.4, 63.1, 140, 34);
+        const pos = posicaoAncoraPt_(0.8, 73.15, 90, 22);
         const imgAssinatura = await carregarImagemElemento_(state.assinaturaContratadaImagemBase64);
         doc.addImage(imgAssinatura, 'PNG', pos.x, pos.y, pos.width, pos.height);
       } catch (err) {
-        console.warn('Falha ao desenhar a assinatura da Contratada na prévia offline (ignorado):', err);
+        console.warn('Falha ao desenhar a assinatura do Elaborador na prévia offline (ignorado):', err);
+      }
+    }
+    if (state.assinaturaAprovadorImagemBase64) {
+      try {
+        const pos = posicaoAncoraPt_(9.0, 73.15, 90, 22);
+        const imgAssinatura = await carregarImagemElemento_(state.assinaturaAprovadorImagemBase64);
+        doc.addImage(imgAssinatura, 'PNG', pos.x, pos.y, pos.width, pos.height);
+      } catch (err) {
+        console.warn('Falha ao desenhar a assinatura do Aprovador na prévia offline (ignorado):', err);
       }
     }
     if (state.assinaturaImagemBase64) {
       try {
-        const pos = posicaoAncoraPt_(15.7, 63.1, 140, 34);
+        const pos = posicaoAncoraPt_(15.7, 73.1, 140, 34);
         const imgAssinatura = await carregarImagemElemento_(state.assinaturaImagemBase64);
         doc.addImage(imgAssinatura, 'PNG', pos.x, pos.y, pos.width, pos.height);
       } catch (err) {

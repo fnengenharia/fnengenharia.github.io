@@ -21,10 +21,15 @@ const RdoExcel = (function () {
   // DUAS linhas dentro da mesma célula (o modelo já veio com wrapText
   // ligado e a linha alta o bastante pra 2 linhas de texto - ver
   // gerarWorkbook).
+  // Modelo trocado de novo em 13/07/2026 (Paulo ajustou o layout - ver
+  // project_rdo_app release da troca de modelo): nº/Rev./Página separaram
+  // rótulo (linha 3, texto estático do modelo, intocado pelo código) de
+  // valor (linha 4/5, mescla própria) - antes rótulo+valor viviam na
+  // MESMA célula mesclada de 3 linhas.
   const CELULAS = {
-    numero: 'L3',      // mescla L3:Q5 (3 linhas) - valign CENTER pra alinhar visualmente com a linha 4
-    rev: 'R3',         // mescla R3:T5, mesma lógica
-    pagina: 'U3',      // mescla U3:V5, mesma lógica
+    numero: 'L4',      // mescla L4:Q5 - só o número, rótulo "RDO - Nº.:" fica em L3 (estático)
+    rev: 'R4',         // mescla R4:T5, mesma lógica - rótulo em R3
+    pagina: 'U4',      // mescla U4:V5, mesma lógica - rótulo em U3
     contratante: 'A6', // "CONTRATANTE:\n" + valor
     obra: 'L6',        // "OBRA: \n" + valor
     objeto: 'A7',      // "OBJETO DO CONTRATO:\n" + valor
@@ -53,10 +58,10 @@ const RdoExcel = (function () {
   // (decisão do Paulo).
   const LINHAS_QUANT = [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27];
   const LINHA_TOTAIS = 28;
-  const LINHA_ATIV_CONTRATADA_INICIO = 30; // até 52 no modelo (23 linhas)
-  const LINHA_ATIV_CONTRATANTE_INICIO = 53; // até 62 no modelo (10 linhas)
-  const CAPACIDADE_CONTRATADA = 23; // em "linhas" de ALTURA_POR_LINHA_PT
-  const CAPACIDADE_CONTRATANTE = 10;
+  const LINHA_ATIV_CONTRATADA_INICIO = 30; // até 56 no modelo (27 linhas) - modelo novo de 13/07/2026
+  const LINHA_ATIV_CONTRATANTE_INICIO = 57; // até 72 no modelo (16 linhas) - modelo novo de 13/07/2026
+  const CAPACIDADE_CONTRATADA = 27; // em "linhas" de ALTURA_POR_LINHA_PT
+  const CAPACIDADE_CONTRATANTE = 16;
 
   // heurístico de nº de caracteres que cabem numa linha do bloco E:V
   // (Arial 10). Calibrado primeiro via AutoFit numa coluna de teste
@@ -308,54 +313,84 @@ const RdoExcel = (function () {
     return { itensColocados, itensDescartados: naoVazios.length - itensColocados, slotsUsados, capacidadeSlots };
   }
 
-  // Área "Responsável da Contratada" (A63:J66, mescla única de 4 linhas) -
-  // espelha inserirAssinatura_ (Contratante), só que o rótulo já é fixo (o
-  // texto real do modelo é lido direto da célula, não hardcoded aqui). O
-  // rótulo vem TOP-aligned no modelo original (CENTER) - forçado aqui pra
-  // 'top' porque a imagem da assinatura ocupa o resto do bloco (3 das 4
-  // linhas) logo abaixo; com CENTER a imagem ficava sobreposta em cima do
-  // texto (confirmado visualmente - "Re[assinatura]ccio" cortando o nome
-  // ao meio). Calibrado por teste visual (PNG) depois do remapeamento de
-  // 10/07 tarde - ver memória feedback_exceljs_template_fill.
-  function inserirAssinaturaContratada_(workbook, sh, nome, base64Png) {
+  // Modelo novo de 13/07/2026: área de assinatura virou 3 blocos lado a
+  // lado nas linhas 73-76 (antes eram 2 blocos nas linhas 63-66) - ver
+  // project_rdo_app release da troca de modelo. "Elaborador" e "Aprovador"
+  // (ambos lado Contratada) agora são 3 células SEPARADAS cada (rótulo
+  // estático em cima, imagem no meio, rótulo+nome embaixo) em vez de 1
+  // mescla única com alinhamento manual - não precisa mais do truque
+  // vertical:'bottom' pra empurrar o texto pro fim do bloco, o rótulo+nome
+  // já tem célula própria (A76/G76) dedicada embaixo da imagem.
+
+  // As células de rótulo do modelo novo (A76/G76/P73) já vêm com ": " no
+  // final do texto ("Responsável da Contratada: ") - diferente do modelo
+  // antigo, que não tinha o dois-pontos (só "Responsável da Contratada").
+  // Sem essa normalização, concatenar ": "+nome direto duplicava o
+  // dois-pontos ("...Contratada:: Nome") - achado testando visualmente o
+  // PDF gerado com o modelo novo.
+  function rotuloComNome_(rotuloCru, fallback, nome) {
+    let rotulo = String(rotuloCru || '').trim() || fallback;
+    rotulo = rotulo.replace(/:\s*$/, ':');
+    return nome ? `${rotulo} ${nome}` : rotulo;
+  }
+
+  // Bloco "Elaborador" (A73 rótulo estático "Elaborador", A74:F75 área da
+  // assinatura, A76 "Responsável da Contratada: "+nome).
+  function inserirAssinaturaElaborador_(workbook, sh, nome, base64Png) {
     const nomeLimpo = (nome || '').trim();
     if (!nomeLimpo && !base64Png) return;
 
-    const cell = sh.getCell('A63');
-    const rotuloBase = String(cell.value || '').trim() || 'Responsável da Contratada';
-    cell.value = nomeLimpo ? `${rotuloBase}: ${nomeLimpo}` : rotuloBase;
-    // Rótulo agora fica embaixo do bloco (linha 66), não em cima (linha 63)
-    // - pedido do Paulo, 11/07. Imagem sobe pra ocupar o espaço ACIMA do
-    // rótulo (linhas 63-65) em vez de abaixo dele.
-    cell.alignment = Object.assign({}, cell.alignment, { vertical: 'bottom' });
+    const cell = sh.getCell('A76');
+    cell.value = rotuloComNome_(cell.value, 'Responsável da Contratada:', nomeLimpo);
 
     if (base64Png) {
       const imageId = workbook.addImage({ base64: base64Png, extension: 'png' });
+      // Calibração inicial (bloco ficou mais estreito/baixo que o antigo -
+      // A:F em vez de A:J, 2 linhas em vez de 3) - AJUSTAR depois de
+      // conferir visualmente um PDF/PNG de teste, mesma convenção de
+      // feedback_exceljs_template_fill.
       sh.addImage(imageId, {
-        // linha 63.1 (0-based) = Excel linha 64 - pedido do Paulo, 11/07:
-        // a assinatura precisa ficar entre as linhas 64/65 (estava
-        // começando um pouco alto demais, colada na linha 63).
-        tl: { col: 3.4, row: 63.1 },
-        ext: { width: 140, height: 34 }
+        tl: { col: 0.8, row: 73.15 },
+        ext: { width: 90, height: 22 }
       });
     }
   }
 
-  // Área "Responsável da Contratante" (K63:V66, mescla única de 4 linhas).
+  // Bloco "Aprovador" (G73/G74:O75/G76) - espelha o Elaborador. Só
+  // preenchido quando o RDO passou por revisão de um administrador (ver
+  // fluxo de aprovação interna) - a assinatura é a JÁ SALVA do login de
+  // quem revisou, nunca desenhada na hora.
+  function inserirAssinaturaAprovador_(workbook, sh, nome, base64Png) {
+    const nomeLimpo = (nome || '').trim();
+    if (!nomeLimpo && !base64Png) return;
+
+    const cell = sh.getCell('G76');
+    cell.value = rotuloComNome_(cell.value, 'Responsável da Contratada:', nomeLimpo);
+
+    if (base64Png) {
+      const imageId = workbook.addImage({ base64: base64Png, extension: 'png' });
+      sh.addImage(imageId, {
+        tl: { col: 9.0, row: 73.15 },
+        ext: { width: 90, height: 22 }
+      });
+    }
+  }
+
+  // Área "Responsável da Contratante" (agora P73:V76, mescla única de 4
+  // linhas - mesma forma/lógica do bloco antigo K63:V66, só mudou de
+  // posição, sem mudança de padrão).
   function inserirAssinatura_(workbook, sh, nome, base64Png) {
     const nomeLimpo = (nome || '').trim();
     if (!nomeLimpo && !base64Png) return;
 
-    const cell = sh.getCell('K63');
-    const rotuloBase = String(cell.value || '').trim() || 'Responsável da Contratante';
-    cell.value = nomeLimpo ? `${rotuloBase}: ${nomeLimpo}` : rotuloBase;
-    // Mesmo ajuste do bloco da Contratada acima (rótulo embaixo, linha 66).
+    const cell = sh.getCell('P73');
+    cell.value = rotuloComNome_(cell.value, 'Responsável da Contratante:', nomeLimpo);
     cell.alignment = Object.assign({}, cell.alignment, { vertical: 'bottom' });
 
     if (base64Png) {
       const imageId = workbook.addImage({ base64: base64Png, extension: 'png' });
       sh.addImage(imageId, {
-        tl: { col: 15.7, row: 63.1 },
+        tl: { col: 15.7, row: 73.1 },
         ext: { width: 140, height: 34 }
       });
     }
@@ -415,18 +450,18 @@ const RdoExcel = (function () {
     const workbook = await carregarTemplate_();
     const sh = workbook.getWorksheet('RDO');
 
-    // RDO nº/Rev./Página ficam numa mescla de 3 linhas (X3:Y5) - vertical
-    // CENTER pra o texto (uma linha só) cair visualmente alinhado com a
-    // linha 4 do meio, em vez de colado no topo (pedido do Paulo, 10/07
-    // tarde).
+    // RDO nº/Rev./Página: rótulo já é texto estático do modelo (linha 3),
+    // aqui só escreve o VALOR na mescla de baixo (linha 4/5) - modelo novo
+    // de 13/07/2026 separou rótulo de valor (antes ficavam juntos na
+    // mesma célula, "RDO - Nº.: " + numero).
     const celCentralizada = (endereco, texto) => {
       const cell = sh.getCell(endereco);
       cell.value = texto;
       cell.alignment = Object.assign({}, cell.alignment, { vertical: 'middle' });
     };
-    celCentralizada(CELULAS.numero, 'RDO - Nº.: ' + numero);
-    celCentralizada(CELULAS.rev, 'Rev.: 0');
-    celCentralizada(CELULAS.pagina, 'Página.: 1/1'); // RDO sempre cabe em 1 página (área de impressão fixa) - paginação automática abandonada em 11/07
+    celCentralizada(CELULAS.numero, String(numero));
+    celCentralizada(CELULAS.rev, '0');
+    celCentralizada(CELULAS.pagina, '1/1'); // RDO sempre cabe em 1 página (área de impressão fixa) - paginação automática abandonada em 11/07
 
     // Contratante/Obra/Objeto do Contrato/Local: rótulo na 1ª linha, valor
     // na 2ª (mesma célula, quebra de linha manual) - pedido do Paulo
@@ -450,7 +485,12 @@ const RdoExcel = (function () {
     const resContratada = preencherAtividades_(sh, LINHA_ATIV_CONTRATADA_INICIO, CAPACIDADE_CONTRATADA, state.atividadesContratada);
     const resContratante = preencherAtividades_(sh, LINHA_ATIV_CONTRATANTE_INICIO, CAPACIDADE_CONTRATANTE, state.atividadesContratante);
 
-    inserirAssinaturaContratada_(workbook, sh, state.assinaturaContratadaNome, state.assinaturaContratadaImagemBase64);
+    inserirAssinaturaElaborador_(workbook, sh, state.assinaturaContratadaNome, state.assinaturaContratadaImagemBase64);
+    // Aprovador só existe quando o RDO passou por revisão de um
+    // administrador (fluxo de aprovação interna) - a função já é um no-op
+    // se esses campos não existirem no state, então é seguro chamar aqui
+    // incondicionalmente.
+    inserirAssinaturaAprovador_(workbook, sh, state.assinaturaAprovadorNome, state.assinaturaAprovadorImagemBase64);
     inserirAssinatura_(workbook, sh, state.assinaturaNome, state.assinaturaImagemBase64);
 
     if (opts && opts.apenasPreview) {
