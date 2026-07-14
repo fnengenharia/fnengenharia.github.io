@@ -6,7 +6,7 @@
 // cada release (o mesmo valor deve ser espelhado em APP_VERSAO_ATUAL no
 // Code.gs, que é o que a atualização automática usa pra saber se tem
 // versão nova pra baixar).
-const VERSAO_APP = 'BETA 0.9.4';
+const VERSAO_APP = 'BETA 0.9.5';
 document.getElementById('versao-app').textContent = VERSAO_APP;
 
 // ---------------------------------------------------------------------------
@@ -252,6 +252,7 @@ const el = {
   avisoAprovacaoContratante: document.getElementById('aviso-aprovacao-contratante'),
   subsecaoAssinaturaContratante: document.getElementById('subsecao-assinatura-contratante'),
   blocoAprovacaoContratante: document.getElementById('bloco-aprovacao-contratante'),
+  blocoEmailContratanteEnvio: document.getElementById('bloco-email-contratante-envio'),
   avisoElaboradorAprovacaoInterna: document.getElementById('aviso-elaborador-aprovacao-interna'),
   secaoAssinaturasEnvio: document.getElementById('secao-assinaturas-envio'),
   btnGerar: document.getElementById('btn-gerar'),
@@ -563,6 +564,17 @@ function renderizarListaAtividades(cfg) {
   }
 }
 
+// Balão "Adicionar atividades do Contratante" (14/07) - bloqueado/apagado
+// por padrão (ninguém preenche essa lista no fluxo direto normalmente, é
+// o Contratante quem escreve pela tela de aprovação por link). Chamado ao
+// RESTAURAR estado salvo/revisão (libera se já tiver conteúdo real) e ao
+// RESETAR pro próximo RDO (sempre volta bloqueado) - o clique direto no
+// botão já libera sozinho (ver listener), não precisa passar por aqui.
+function atualizarBalaoContratante_() {
+  const temConteudo = state.atividadesContratante.some(item => (item.discriminacao || '').trim() || item.inicio || item.fim);
+  el.btnAddContratante.classList.toggle('botao-balao-bloqueado', !temConteudo);
+}
+
 const cfgAtivContratada = {
   itens: state.atividadesContratada,
   container: el.listaAtivContratada,
@@ -600,6 +612,9 @@ el.btnAddContratada.addEventListener('click', () => {
   renderizarListaAtividades(cfgAtivContratada);
 });
 el.btnAddContratante.addEventListener('click', () => {
+  // "Balão" bloqueado/apagado por padrão (14/07) - primeiro clique já
+  // libera o visual normal, além de adicionar a linha de sempre.
+  el.btnAddContratante.classList.remove('botao-balao-bloqueado');
   state.atividadesContratante.push({ inicio: '', fim: '', discriminacao: '' });
   renderizarListaAtividades(cfgAtivContratante);
 });
@@ -834,6 +849,7 @@ async function restaurarEstadoEmAndamento_() {
   renderizarListaQuantCrescente(cfgEquipamentos);
   renderizarListaAtividades(cfgAtivContratada);
   renderizarListaAtividades(cfgAtivContratante);
+  atualizarBalaoContratante_();
 
   el.nomeAssinante.value = state.assinaturaNome;
   el.concordo.checked = state.assinaturaConcordo;
@@ -963,6 +979,10 @@ function aplicarPerfilNaUI_(perfil) {
   const ehElaborador = (perfil || 'elaborador') === 'elaborador';
   el.subsecaoAssinaturaContratante.style.display = ehElaborador ? 'none' : 'block';
   el.blocoAprovacaoContratante.style.display = ehElaborador ? 'none' : 'block';
+  // E-mail do responsável da Contratante é exclusivo de quem manda pro
+  // cliente de verdade (administrador/admin_master) - elaborador nunca
+  // vê nem preenche esse campo, o administrador que revisar decide.
+  el.blocoEmailContratanteEnvio.style.display = ehElaborador ? 'none' : 'block';
   el.avisoElaboradorAprovacaoInterna.style.display = ehElaborador ? 'block' : 'none';
 }
 
@@ -1767,6 +1787,7 @@ async function abrirRevisaoInterna_(token) {
     renderizarListaQuantCrescente(cfgEquipamentos);
     renderizarListaAtividades(cfgAtivContratada);
     renderizarListaAtividades(cfgAtivContratante);
+    atualizarBalaoContratante_();
 
     el.assinaturaContratadaInfo.textContent = 'Elaborado por: ' + (s.assinaturaContratadaNome || resp.nomeElaborador || '');
     el.nomeAssinante.value = state.assinaturaNome;
@@ -2091,6 +2112,17 @@ async function resetarParaProximoRdo_() {
   el.observacoes.value = '';
   el.observacoes.style.height = 'auto';
 
+  // Efetivo/Equipamentos (14/07): a QUANTIDADE zera a cada RDO novo (o
+  // efetivo/maquinário em campo muda de um dia pro outro), mas a
+  // DESCRIÇÃO (nomes das funções/equipamentos já cadastrados) continua
+  // salva - só "Limpar dados salvos" (btnLimparIdentificacao) apaga a
+  // descrição de vez, voltando pro padrão de app recém-aberto.
+  state.efetivo.forEach(item => { item.quant = ''; });
+  renderizarListaQuantCrescente(cfgEfetivo);
+  state.equipamentos.forEach(item => { item.quant = ''; });
+  renderizarListaQuantCrescente(cfgEquipamentos);
+  salvarUltimaIdentificacao_();
+
   state.atividadesContratada.length = 0;
   state.atividadesContratada.push({ inicio: '', fim: '', discriminacao: '', autor: '' });
   renderizarListaAtividades(cfgAtivContratada);
@@ -2098,6 +2130,7 @@ async function resetarParaProximoRdo_() {
   state.atividadesContratante.length = 0;
   state.atividadesContratante.push({ inicio: '', fim: '', discriminacao: '' });
   renderizarListaAtividades(cfgAtivContratante);
+  atualizarBalaoContratante_();
 
   state.assinaturaAprovadorNome = '';
   state.assinaturaAprovadorImagemBase64 = null;

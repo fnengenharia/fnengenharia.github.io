@@ -583,6 +583,49 @@ textarea { resize: vertical; overflow: hidden; }
   margin: 0 0 10px;
 }
 
+/* Separação visual melhor entre Atividades da Contratada e da Contratante
+   (14/07) - antes as duas subseções só tinham a linha tracejada genérica
+   (mesma de qualquer par de subseções empilhadas), fácil de confundir
+   qual bloco é de quem. Cor vinho = Contratada (mesma cor da marca/FN em
+   todo o resto do app), dourado = Contratante (cor de destaque, sinaliza
+   "é de fora"). Sobrescreve o border-top tracejado genérico (a borda
+   lateral colorida já cumpre esse papel de separador). */
+.secao-formulario .conteudo-secao > .subsecao-atividades + .subsecao-atividades {
+  border-top: none;
+  margin-top: 16px;
+  padding-top: 0;
+}
+.subsecao-atividades {
+  border-left: 4px solid transparent;
+  border-radius: var(--raio-sm);
+  padding: 10px 10px 10px 12px;
+}
+.subsecao-atividades-contratada {
+  border-left-color: var(--vinho);
+  background: var(--vinho-claro);
+}
+.subsecao-atividades-contratada > h3 { color: var(--vinho); }
+.subsecao-atividades-contratante {
+  border-left-color: var(--dourado-escuro);
+  background: var(--dourado-claro);
+}
+.subsecao-atividades-contratante > h3 { color: var(--dourado-escuro); }
+
+/* Balão "Adicionar atividades do Contratante" (14/07) - nasce com cara de
+   bloqueado/apagado (igual outros elementos desabilitados do app) porque
+   normalmente NINGUÉM preenche essa lista no fluxo direto (é o Contratante
+   quem escreve, pela tela de aprovação por link) - só faz sentido usar
+   aqui se o representante do Contratante estiver presente e ditando as
+   atividades na hora. Primeiro clique "libera" o visual (some essa
+   classe via JS, vira botão secundário normal) e already adiciona a
+   primeira linha.
+*/
+.botao-balao-bloqueado {
+  background: var(--desabilitado-bg);
+  color: var(--desabilitado-texto);
+  border: 1px dashed var(--desabilitado-texto);
+}
+
 /* Tela de Perfil - RDOs agrupados por obra, ver telaPerfil_ em app.js */
 .subtitulo-perfil {
   font-size: 13px;

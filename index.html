@@ -240,18 +240,18 @@
       <svg class="seta-secao" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
     </summary>
     <div class="conteudo-secao">
-      <div class="subsecao">
+      <div class="subsecao subsecao-atividades subsecao-atividades-contratada">
         <h3>Atividades - Contratada</h3>
         <p class="orcamento-info">Espaço usado: <span id="orcamento-contratada">0 / 23</span> linhas</p>
         <div id="lista-atividades-contratada" class="lista-atividades"></div>
         <button type="button" id="btn-add-contratada" class="botao-secundario">+ Adicionar atividade</button>
       </div>
 
-      <div class="subsecao">
+      <div class="subsecao subsecao-atividades subsecao-atividades-contratante">
         <h3>Atividades - Contratante</h3>
         <p class="orcamento-info">Espaço usado: <span id="orcamento-contratante">0 / 10</span> linhas</p>
         <div id="lista-atividades-contratante" class="lista-atividades"></div>
-        <button type="button" id="btn-add-contratante" class="botao-secundario">+ Adicionar atividade</button>
+        <button type="button" id="btn-add-contratante" class="botao-secundario botao-balao-bloqueado">+ Adicionar atividades do Contratante</button>
       </div>
     </div>
   </details>
@@ -300,9 +300,11 @@
 
       <div class="subsecao">
         <h3>E-mail e Envio</h3>
-        <label for="campo-email-contratante">E-mail do responsável da Contratante</label>
-        <input type="email" id="campo-email-contratante" placeholder="email@exemplo.com" inputmode="email" autocomplete="off">
-        <p class="orcamento-info" id="info-email-contratante-envio">Usado como cópia (CC) se o Contratante assinar na hora, ou como destino do link de aprovação se marcar a caixa abaixo.</p>
+        <div id="bloco-email-contratante-envio">
+          <label for="campo-email-contratante">E-mail do responsável da Contratante</label>
+          <input type="email" id="campo-email-contratante" placeholder="email@exemplo.com" inputmode="email" autocomplete="off">
+          <p class="orcamento-info" id="info-email-contratante-envio">Usado como cópia (CC) se o Contratante assinar na hora, ou como destino do link de aprovação se marcar a caixa abaixo.</p>
+        </div>
         <div id="bloco-aprovacao-contratante">
           <label class="linha-checkbox">
             <input type="checkbox" id="campo-aprovacao-contratante">
