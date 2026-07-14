@@ -290,8 +290,11 @@ const RdoExcel = (function () {
         break;
       }
 
-      if (item.inicio) sh.getCell(`C${linhaAtual}`).value = item.inicio;
-      if (item.fim) sh.getCell(`D${linhaAtual}`).value = item.fim;
+      // Item com discriminação mas sem horário preenchido (14/07/2026,
+      // pedido do Paulo) mostra um traço em vez de deixar a célula em
+      // branco - deixa claro que o campo foi visto e ficou mesmo vazio.
+      sh.getCell(`C${linhaAtual}`).value = item.inicio || '-';
+      sh.getCell(`D${linhaAtual}`).value = item.fim || '-';
       sh.getCell(`E${linhaAtual}`).value = texto;
       sh.getRow(linhaAtual).height = ALTURA_POR_LINHA_PT * nLinhas;
 

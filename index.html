@@ -247,7 +247,7 @@
         <button type="button" id="btn-add-contratada" class="botao-secundario">+ Adicionar atividade</button>
       </div>
 
-      <div class="subsecao subsecao-atividades subsecao-atividades-contratante">
+      <div class="subsecao subsecao-atividades subsecao-atividades-contratante" id="subsecao-atividades-contratante">
         <h3>Atividades - Contratante</h3>
         <p class="orcamento-info">Espaço usado: <span id="orcamento-contratante">0 / 10</span> linhas</p>
         <div id="lista-atividades-contratante" class="lista-atividades"></div>
@@ -281,39 +281,15 @@
         </div>
       </div>
 
-      <div class="subsecao" id="subsecao-assinatura-contratante">
-        <h3>Assinatura do Contratante</h3>
-        <p class="orcamento-info">Se o representante do Contratante estiver na obra agora, ele assina aqui embaixo. Se não estiver, marque "Contratante irá verificar o RDO em seu E-mail" logo abaixo, ao lado do botão de pré-visualizar - um dos dois é obrigatório.</p>
-        <label for="campo-nome-assinante">Nome de quem está assinando</label>
-        <input type="text" id="campo-nome-assinante" placeholder="Nome completo">
-        <label>Assine abaixo com o dedo</label>
-        <canvas id="canvas-assinatura" class="canvas-assinatura" width="600" height="200"></canvas>
-        <div class="linha-botoes-assinatura">
-          <button type="button" id="btn-limpar-assinatura" class="botao-secundario">Limpar assinatura</button>
-          <button type="button" id="btn-travar-assinatura" class="botao-secundario btn-travar travado">Destravar para assinar</button>
-        </div>
-        <label class="linha-checkbox">
-          <input type="checkbox" id="campo-concordo">
-          Declaro que sou representante do Contratante e concordo com as informações registradas neste RDO
-        </label>
-      </div>
-
       <div class="subsecao">
         <h3>E-mail e Envio</h3>
         <div id="bloco-email-contratante-envio">
           <label for="campo-email-contratante">E-mail do responsável da Contratante</label>
           <input type="email" id="campo-email-contratante" placeholder="email@exemplo.com" inputmode="email" autocomplete="off">
-          <p class="orcamento-info" id="info-email-contratante-envio">Usado como cópia (CC) se o Contratante assinar na hora, ou como destino do link de aprovação se marcar a caixa abaixo.</p>
-        </div>
-        <div id="bloco-aprovacao-contratante">
-          <label class="linha-checkbox">
-            <input type="checkbox" id="campo-aprovacao-contratante">
-            Contratante irá verificar o RDO em seu E-mail
-          </label>
-          <p class="orcamento-info" id="aviso-aprovacao-contratante" style="display:none;">
+          <p class="orcamento-info" id="info-email-contratante-envio">
             O Contratante vai receber um e-mail com o PDF e um link pra escrever as
-            atividades da Contratante e assinar. O RDO final só é enviado (pra você
-            e pro Contratante) depois que ele concluir por lá.
+            atividades dele e assinar. O RDO final só é enviado (pra você e pro
+            Contratante) depois que ele concluir por lá.
           </p>
         </div>
         <p class="orcamento-info" id="aviso-elaborador-aprovacao-interna" style="display:none;">

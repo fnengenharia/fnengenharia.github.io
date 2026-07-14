@@ -225,8 +225,10 @@ const RdoPreviewOffline = (function () {
       const nLinhas = (typeof RdoExcel !== 'undefined') ? RdoExcel.estimarLinhasAtividade(texto) : 1;
       if (slotsUsados + nLinhas > capacidadeSlots) break;
 
-      if (item.inicio) escreverTexto_(doc, item.inicio, 'C', linhaAtual, 8, 1, { padXPt: 2, limparLarguraPt: 36 });
-      if (item.fim) escreverTexto_(doc, item.fim, 'D', linhaAtual, 8, 1, { padXPt: 2, limparLarguraPt: 36 });
+      // Mesma regra do traço (14/07/2026, ver excel-fill.js) - item com
+      // discriminação mas sem horário mostra "-" em vez de ficar em branco.
+      escreverTexto_(doc, item.inicio || '-', 'C', linhaAtual, 8, 1, { padXPt: 2, limparLarguraPt: 36 });
+      escreverTexto_(doc, item.fim || '-', 'D', linhaAtual, 8, 1, { padXPt: 2, limparLarguraPt: 36 });
       const linhasTexto = quebrarLinhas_(texto, 90);
       linhasTexto.slice(0, nLinhas).forEach((linhaTexto, i) => {
         escreverTexto_(doc, linhaTexto, 'E', linhaAtual + i, 8, 1, { limparLarguraPt: 535 });

@@ -6,7 +6,7 @@
 // cada release (o mesmo valor deve ser espelhado em APP_VERSAO_ATUAL no
 // Code.gs, que é o que a atualização automática usa pra saber se tem
 // versão nova pra baixar).
-const VERSAO_APP = 'BETA 0.9.6';
+const VERSAO_APP = 'BETA 0.9.7';
 document.getElementById('versao-app').textContent = VERSAO_APP;
 
 // ---------------------------------------------------------------------------
@@ -175,18 +175,26 @@ const state = {
   assinaturaContratadaImagemBase64: null,
   assinaturaAprovadorNome: '',
   assinaturaAprovadorImagemBase64: null,
+  // Nome/assinatura/concordância do Contratante NUNCA são mais preenchidos
+  // aqui no app principal (14/07/2026) - uma assinatura só tem valor de
+  // prova se vier pelo link auditado (CPF+IP+horário, ver aprovacao.js),
+  // então esses 3 campos ficam sempre no valor padrão até o Contratante
+  // completar o link; o state final de verdade é montado lá
+  // (montarStateFinal_ em aprovacao.js) e sobrescreve estes.
   assinaturaNome: '',
-  assinaturaImagemBase64: null, // preenchido só na hora de gerar, a partir do canvas
+  assinaturaImagemBase64: null,
   assinaturaConcordo: false,
-  // e-mail do responsável da Contratante, pra receber cópia (CC) do RDO -
-  // pedido do Paulo, 10/07. Fica SALVO entre RDOs (localStorage, ver
-  // salvarUltimaIdentificacao_) desde 11/07 - é o mesmo responsável da
-  // mesma obra na maioria dos dias, não faz sentido redigitar toda vez.
+  // e-mail do responsável da Contratante, pra onde vai o link de aprovação.
+  // Fica SALVO entre RDOs (localStorage, ver salvarUltimaIdentificacao_)
+  // desde 11/07 - é o mesmo responsável da mesma obra na maioria dos dias,
+  // não faz sentido redigitar toda vez.
   emailContratante: '',
-  // Checkbox "Contratante irá verificar o RDO em seu E-mail" (11/07) - por
-  // RDO, não persiste. Quando true, o botão final manda pra aprovação em
-  // vez de enviar direto (ver btnConfirmarEnvio).
-  aprovacaoContratante: false
+  // Aprovação por e-mail virou o ÚNICO caminho pro Contratante confirmar um
+  // RDO (14/07/2026 - atividades e assinatura dele são exclusivas do link
+  // agora, ver [[project_rdo_app]]) - sempre true pra quem manda de verdade
+  // (administrador/admin_master); elaborador nem chega a usar este campo
+  // (RDO dele sempre vai pra aprovação interna primeiro).
+  aprovacaoContratante: true
 };
 
 let obrasDisponiveis = [];
@@ -242,16 +250,8 @@ const el = {
   btnTravarAssinaturaContratada: document.getElementById('btn-travar-assinatura-contratada'),
   btnSalvarNovaAssinaturaContratada: document.getElementById('btn-salvar-nova-assinatura-contratada'),
   statusNovaAssinaturaContratada: document.getElementById('status-nova-assinatura-contratada'),
-  nomeAssinante: document.getElementById('campo-nome-assinante'),
   emailContratante: document.getElementById('campo-email-contratante'),
-  canvasAssinatura: document.getElementById('canvas-assinatura'),
-  btnLimparAssinatura: document.getElementById('btn-limpar-assinatura'),
-  btnTravarAssinatura: document.getElementById('btn-travar-assinatura'),
-  concordo: document.getElementById('campo-concordo'),
-  aprovacaoContratante: document.getElementById('campo-aprovacao-contratante'),
-  avisoAprovacaoContratante: document.getElementById('aviso-aprovacao-contratante'),
-  subsecaoAssinaturaContratante: document.getElementById('subsecao-assinatura-contratante'),
-  blocoAprovacaoContratante: document.getElementById('bloco-aprovacao-contratante'),
+  subsecaoAtividadesContratante: document.getElementById('subsecao-atividades-contratante'),
   blocoEmailContratanteEnvio: document.getElementById('bloco-email-contratante-envio'),
   avisoElaboradorAprovacaoInterna: document.getElementById('aviso-elaborador-aprovacao-interna'),
   secaoAssinaturasEnvio: document.getElementById('secao-assinaturas-envio'),
@@ -734,15 +734,7 @@ let debounceEstadoEmAndamentoTimer_ = null;
 
 function salvarEstadoEmAndamento_() {
   try {
-    localStorage.setItem(CHAVE_ESTADO_EM_ANDAMENTO, JSON.stringify({
-      state,
-      // state.assinaturaImagemBase64 só é preenchido na hora de GERAR (a
-      // partir do canvas) - pra não perder um desenho ainda não gerado,
-      // guarda o canvas da Contratante à parte aqui.
-      assinaturaContratanteBase64: assinaturaContratante.estado.temAssinatura
-        ? el.canvasAssinatura.toDataURL('image/png').split(',')[1]
-        : null
-    }));
+    localStorage.setItem(CHAVE_ESTADO_EM_ANDAMENTO, JSON.stringify({ state }));
   } catch (err) {
     console.warn('Falha ao salvar estado em andamento:', err);
   }
@@ -814,9 +806,6 @@ async function restaurarEstadoEmAndamento_() {
   state.observacoes = s.observacoes || '';
   state.emailContratante = s.emailContratante || '';
   state.tempo = s.tempo || state.tempo;
-  state.assinaturaNome = s.assinaturaNome || '';
-  state.assinaturaConcordo = Boolean(s.assinaturaConcordo);
-  state.aprovacaoContratante = Boolean(s.aprovacaoContratante);
 
   state.efetivo.length = 0;
   (s.efetivo || []).forEach(item => state.efetivo.push(item));
@@ -850,14 +839,6 @@ async function restaurarEstadoEmAndamento_() {
   renderizarListaAtividades(cfgAtivContratada);
   renderizarListaAtividades(cfgAtivContratante);
   atualizarBalaoContratante_();
-
-  el.nomeAssinante.value = state.assinaturaNome;
-  el.concordo.checked = state.assinaturaConcordo;
-  el.aprovacaoContratante.checked = state.aprovacaoContratante;
-  el.avisoAprovacaoContratante.style.display = state.aprovacaoContratante ? 'block' : 'none';
-  if (salvo.assinaturaContratanteBase64) {
-    await assinaturaContratante.restaurar(salvo.assinaturaContratanteBase64);
-  }
 
   if (state.contratante) {
     const obras = [...new Set(obrasDisponiveis.filter(o => o.cliente === state.contratante).map(o => o.obra))].sort();
@@ -977,8 +958,16 @@ function aplicarSessaoNoFormulario_(sessao) {
 // cliente. Ver [[project_rdo_app]] release de papéis de usuário.
 function aplicarPerfilNaUI_(perfil) {
   const ehElaborador = (perfil || 'elaborador') === 'elaborador';
-  el.subsecaoAssinaturaContratante.style.display = ehElaborador ? 'none' : 'block';
-  el.blocoAprovacaoContratante.style.display = ehElaborador ? 'none' : 'block';
+  const ehAdminMaster = perfil === 'admin_master';
+  // Atividades da Contratante (14/07/2026) viraram preenchimento EXCLUSIVO
+  // do Contratante pelo link (aprovacao.html) - elaborador e administrador
+  // comum nem enxergam mais o campo; só admin_master ainda vê/edita o texto
+  // direto no app (correção manual, privilégio total já usado no resto do
+  // app). A assinatura do Contratante em si NUNCA é desenhada aqui por
+  // ninguém, nem admin_master (só tem valor de prova vinda do link
+  // auditado) - por isso não existe mais nenhuma UI de assinatura dele
+  // neste arquivo.
+  el.subsecaoAtividadesContratante.style.display = ehAdminMaster ? 'block' : 'none';
   // E-mail do responsável da Contratante é exclusivo de quem manda pro
   // cliente de verdade (administrador/admin_master) - elaborador nunca
   // vê nem preenche esse campo, o administrador que revisar decide.
@@ -1769,9 +1758,6 @@ async function abrirRevisaoInterna_(token) {
     state.observacoes = s.observacoes || '';
     state.emailContratante = s.emailContratante || '';
     state.tempo = s.tempo || state.tempo;
-    state.assinaturaNome = s.assinaturaNome || '';
-    state.assinaturaConcordo = Boolean(s.assinaturaConcordo);
-    state.aprovacaoContratante = Boolean(s.aprovacaoContratante);
     // Elaborador (assinaturaContratadaNome/ImagemBase64) vem do state
     // salvo - é a assinatura de quem CRIOU o RDO, não pode ser
     // sobrescrita pela sessão de quem está revisando.
@@ -1817,10 +1803,6 @@ async function abrirRevisaoInterna_(token) {
     atualizarBalaoContratante_();
 
     el.assinaturaContratadaInfo.textContent = 'Elaborado por: ' + (s.assinaturaContratadaNome || resp.nomeElaborador || '');
-    el.nomeAssinante.value = state.assinaturaNome;
-    el.concordo.checked = state.assinaturaConcordo;
-    el.aprovacaoContratante.checked = state.aprovacaoContratante;
-    el.avisoAprovacaoContratante.style.display = state.aprovacaoContratante ? 'block' : 'none';
 
     aprovacaoInternaAtual_ = { token, loginElaborador: resp.loginElaborador, nomeElaborador: resp.nomeElaborador };
     aplicarTravamentoRevisaoInterna_(true, sessao.perfil);
@@ -1880,31 +1862,10 @@ el.btnVoltarObras.addEventListener('click', () => {
   el.perfilListaObras.style.display = 'block';
 });
 
-const assinaturaContratante = configurarCanvasAssinatura_(el.canvasAssinatura);
-el.btnLimparAssinatura.addEventListener('click', () => assinaturaContratante.limpar());
-el.nomeAssinante.addEventListener('input', () => { state.assinaturaNome = el.nomeAssinante.value; });
 el.emailContratante.addEventListener('input', () => {
   state.emailContratante = el.emailContratante.value.trim();
   salvarUltimaIdentificacao_();
 });
-el.concordo.addEventListener('change', () => { state.assinaturaConcordo = el.concordo.checked; });
-// E-mail do responsável da Contratante virou PRÉ-REQUISITO pra marcar
-// esta caixa (pedido do Paulo, 11/07 tarde) - antes só bloqueava lá na
-// hora de "Gerar" (validar()), tarde demais (dava pra marcar a caixa e só
-// descobrir o problema depois de preencher tudo o resto). Agora bloqueia
-// na hora do clique: sem e-mail preenchido, desmarca a caixa de volta e
-// avisa, sem deixar marcar.
-el.aprovacaoContratante.addEventListener('change', () => {
-  if (el.aprovacaoContratante.checked && !state.emailContratante.trim()) {
-    el.aprovacaoContratante.checked = false;
-    alert('Preencha o e-mail do responsável da Contratante antes de marcar esta opção - é pra lá que o link de aprovação é enviado.');
-    el.emailContratante.focus();
-    return;
-  }
-  state.aprovacaoContratante = el.aprovacaoContratante.checked;
-  el.avisoAprovacaoContratante.style.display = state.aprovacaoContratante ? 'block' : 'none';
-});
-configurarBotaoTravar_(el.btnTravarAssinatura, assinaturaContratante);
 
 // ---------------------------------------------------------------------------
 // Gerar e enviar
@@ -1915,7 +1876,12 @@ function mostrarStatus(texto, tipo) {
   el.status.className = 'status' + (tipo ? ' ' + tipo : '');
 }
 
-function validar() {
+// Checagens básicas (14/07/2026) - as únicas exigidas pra PRÉ-VISUALIZAR
+// (validarParaPreview_). A confirmação do Contratante (e-mail pro link de
+// aprovação) só é cobrada na hora de ENVIAR de verdade (validarParaEnvio_) -
+// pedido do Paulo: antes as duas coisas eram a mesma checagem, obrigando a
+// decidir o e-mail do Contratante só pra espiar como o RDO estava ficando.
+function validarBasico_() {
   if (!state.contratante) return 'Selecione o Contratante.';
   if (!state.obra) return 'Selecione a Obra.';
   if (!state.data) return 'Selecione a Data.';
@@ -1925,35 +1891,29 @@ function validar() {
   if (!state.assinaturaContratadaNome.trim() || !state.assinaturaContratadaImagemBase64) {
     return 'Sessão de login perdida - recarregue a página e entre de novo.';
   }
+  return null;
+}
+
+function validarParaPreview_() {
+  return validarBasico_();
+}
+
+function validarParaEnvio_() {
+  const erroBasico = validarBasico_();
+  if (erroBasico) return erroBasico;
   // Elaborador (14/07/2026, papéis de usuário) não preenche nada do
   // Contratante aqui - o RDO sempre vai pra aprovação interna primeiro, um
   // administrador que decide depois como mandar pro cliente.
   if (perfilAtual_() === 'elaborador') return null;
-  // Confirmação do Contratante virou OBRIGATÓRIA (pedido do Paulo,
-  // 12/07): ou ele assina na hora (nome + assinatura + declaração de
-  // representante), ou o RDO vai pra aprovação por e-mail (checkbox
-  // "Contratante irá verificar o RDO em seu E-mail", que já exige o
-  // e-mail preenchido pra poder marcar - ver listener de
-  // aprovacaoContratante). Antes dava pra pular os dois e mandar o RDO
-  // sem nenhuma confirmação do Contratante.
-  const nomePreenchido = Boolean(state.assinaturaNome.trim());
-  const assinaturaDesenhada = assinaturaContratante.estado.temAssinatura;
-  const assinouNaHora = nomePreenchido && assinaturaDesenhada && state.assinaturaConcordo;
-
-  if (!assinouNaHora && !state.aprovacaoContratante) {
-    if (nomePreenchido || assinaturaDesenhada || state.assinaturaConcordo) {
-      return 'Complete a assinatura do Contratante (nome + assinatura + declaração de concordância) ou marque "Contratante irá verificar o RDO em seu E-mail".';
-    }
-    return 'O Contratante precisa assinar aqui mesmo, ou marque "Contratante irá verificar o RDO em seu E-mail".';
-  }
-  if (state.emailContratante && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(state.emailContratante)) {
-    return 'E-mail do responsável da Contratante parece inválido.';
-  }
-  // Se o RDO vai pra aprovação por e-mail, o e-mail do responsável é
-  // obrigatório (é pra lá que o link de aprovação é enviado) - já
-  // bloqueado na hora de marcar a caixa, checagem aqui é só reforço.
-  if (state.aprovacaoContratante && !state.emailContratante.trim()) {
+  // Atividades e assinatura do Contratante são exclusivas do link
+  // (aprovacao.html) agora - o único jeito de mandar pro cliente é por
+  // e-mail de aprovação, então o e-mail do responsável é sempre
+  // obrigatório na hora de enviar de verdade.
+  if (!state.emailContratante.trim()) {
     return 'Preencha o e-mail do responsável da Contratante pra mandar pra aprovação.';
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(state.emailContratante)) {
+    return 'E-mail do responsável da Contratante parece inválido.';
   }
   return null;
 }
@@ -2168,26 +2128,6 @@ async function resetarParaProximoRdo_() {
   state.assinaturaAprovadorNome = '';
   state.assinaturaAprovadorImagemBase64 = null;
 
-  assinaturaContratante.limpar();
-  // Bug real corrigido (14/07): limpar() só apaga o DESENHO - o estado
-  // travado/destravado do canvas sobrevivia ao reset (já documentado como
-  // armadilha de TESTE, mas nunca corrigido de verdade pro usuário). Sem
-  // isso, quem destrava/assina um RDO via presencial já começava o
-  // PRÓXIMO RDO com o canvas destravado, mesmo com o desenho limpo -
-  // sempre volta TRAVADO pro próximo RDO, igual um app recém-aberto.
-  if (!assinaturaContratante.estado.travada) {
-    assinaturaContratante.alternarTravamento();
-    el.btnTravarAssinatura.textContent = 'Destravar para assinar';
-    el.btnTravarAssinatura.classList.add('travado');
-  }
-  el.nomeAssinante.value = '';
-  state.assinaturaNome = '';
-  el.concordo.checked = false;
-  state.assinaturaConcordo = false;
-  el.aprovacaoContratante.checked = false;
-  state.aprovacaoContratante = false;
-  el.avisoAprovacaoContratante.style.display = 'none';
-
   // RDO foi enviado de verdade - não tem mais o que restaurar de um "RDO em
   // andamento" (ver CHAVE_ESTADO_EM_ANDAMENTO).
   apagarEstadoEmAndamento_();
@@ -2224,7 +2164,7 @@ async function resetarParaProximoRdo_() {
 async function atualizarPreviewInline_() {
   if (el.cartaoPreview.style.display !== 'block') return; // só atualiza se a prévia já estiver aberta
   if (atualizandoPreview_) return; // já tem uma atualização rodando, não empilha outra
-  const erro = validar();
+  const erro = validarParaPreview_();
   if (erro) {
     el.statusConfirmacao.textContent = 'Corrija antes de continuar: ' + erro;
     el.statusConfirmacao.className = 'status erro';
@@ -2238,9 +2178,6 @@ async function atualizarPreviewInline_() {
   try {
     el.statusConfirmacao.textContent = 'Atualizando prévia...';
     el.statusConfirmacao.className = 'status';
-    state.assinaturaImagemBase64 = assinaturaContratante.estado.temAssinatura
-      ? el.canvasAssinatura.toDataURL('image/png').split(',')[1]
-      : null;
 
     if (RdoConectividade.estaOnline()) {
       el.avisoPreviaOffline.style.display = 'none';
@@ -2286,9 +2223,7 @@ async function atualizarPreviewInline_() {
 
     el.btnConfirmarEnvio.textContent = perfilAtual_() === 'elaborador'
       ? 'Salvar para Aprovação Interna'
-      : (state.aprovacaoContratante
-        ? 'ENVIAR À CONTRATANTE PARA APROVAÇÃO FINAL'
-        : 'Confirmar e Enviar por E-mail');
+      : 'ENVIAR À CONTRATANTE PARA APROVAÇÃO FINAL';
   } catch (err) {
     console.error(err);
     el.statusConfirmacao.textContent = 'Erro ao atualizar a prévia: ' + (err && err.message ? err.message : err);
@@ -2301,7 +2236,7 @@ async function atualizarPreviewInline_() {
 }
 
 el.btnGerar.addEventListener('click', async () => {
-  const erro = validar();
+  const erro = validarParaPreview_();
   if (erro) { mostrarStatus(erro, 'erro'); return; }
 
   el.btnGerar.disabled = true;
@@ -2549,6 +2484,17 @@ el.btnConfirmarEnvio.addEventListener('click', async () => {
       el.statusConfirmacao.textContent = 'RDO salvo! Um administrador vai revisar e enviar pro Contratante.';
       el.statusConfirmacao.className = 'status sucesso';
       await resetarParaProximoRdo_();
+      return;
+    }
+
+    // Confirmação do Contratante (e-mail pro link de aprovação) só é
+    // exigida aqui, na hora de ENVIAR de verdade - pré-visualizar não
+    // exige mais isso (pedido do Paulo, 14/07: antes as duas coisas
+    // compartilhavam a mesma checagem, ver validarParaEnvio_).
+    const erroEnvio = validarParaEnvio_();
+    if (erroEnvio) {
+      el.statusConfirmacao.textContent = erroEnvio;
+      el.statusConfirmacao.className = 'status erro';
       return;
     }
 
