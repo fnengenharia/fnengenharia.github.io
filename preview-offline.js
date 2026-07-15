@@ -178,7 +178,7 @@ const RdoPreviewOffline = (function () {
       const equip = equipamentosVeiculos[i] || { descricao: '', quant: '' };
       const veic = equipamentosVeiculos[i + 12] || { descricao: '', quant: '' };
       escreverTexto_(doc, truncar_(mod.descricao, 25), 'B', r, 8, 1, { limparLarguraPt: 144 });
-      escreverTexto_(doc, mod.quant, 'F', r, 8, 1, { padXPt: 10, limparLarguraPt: 72 });
+      escreverTexto_(doc, mod.quant, 'G', r, 8, 1, { padXPt: 10, limparLarguraPt: 36 });
       escreverTexto_(doc, truncar_(equip.descricao, 27), 'H', r, 8, 1, { limparLarguraPt: 158 });
       escreverTexto_(doc, equip.quant, 'N', r, 8, 1, { padXPt: 10, limparLarguraPt: 33 });
       escreverTexto_(doc, truncar_(veic.descricao, 29), 'P', r, 8, 1, { limparLarguraPt: 170 });
@@ -237,12 +237,12 @@ const RdoPreviewOffline = (function () {
 
     escreverTexto_(doc, state.contratante, 'A', 6, 10, 17, { limparLarguraPt: 372 });
     escreverTexto_(doc, state.obra, 'L', 6, 10, 17, { limparLarguraPt: 307.8 });
-    // OS (14/07/2026) - célula única "OS: XXXX" (rótulo+valor no MESMO
-    // texto, igual ao fundo estático da imagem) - precisa LIMPAR a área
-    // antes (o placeholder "OS:                 XXXX" vem impresso na
-    // imagem de fundo), diferente do padrão usado pra "Data: " (que só
-    // limpa o espaço do VALOR, rótulo separado).
-    escreverTexto_(doc, 'OS: ' + (state.os || ''), 'U', 6, 9, 2, { padXPt: 4, limparLarguraPt: 76.8 });
+    // OS (15/07/2026) - rótulo "OS:" agora fica sozinho na 1ª linha (já
+    // vem impresso no fundo estático, igual OBRA/LOCAL) e só o VALOR é
+    // desenhado na 2ª linha, mesmo padrão de deslocTopoPt=17 usado pra
+    // OBRA/LOCAL na mesma linha física (corrigido - antes ficava tudo
+    // lado a lado numa linha só).
+    escreverTexto_(doc, state.os || '', 'U', 6, 9, 17, { padXPt: 4, limparLarguraPt: 76.8 });
     escreverTexto_(doc, state.objetoContrato, 'A', 7, 10, 17, { limparLarguraPt: 372 });
     escreverTexto_(doc, state.local, 'L', 7, 10, 17, { limparLarguraPt: 307.8 });
     if (state.data) {

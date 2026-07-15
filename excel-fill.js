@@ -32,7 +32,7 @@ const RdoExcel = (function () {
     pagina: 'U4',      // mescla U4:V5, mesma lógica - rótulo em U3
     contratante: 'A6', // "CONTRATANTE:\n" + valor
     obra: 'L6',        // "OBRA: \n" + valor
-    os: 'U6',          // "OS:                 " + valor (14/07/2026, célula já vem com placeholder cru "OS: XXXX" no modelo)
+    os: 'U6',          // "OS:\n" + valor (rótulo em cima, valor embaixo - mesmo padrão de OBRA/LOCAL; corrigido 15/07/2026, estava lado a lado)
     objeto: 'A7',      // "OBJETO DO CONTRATO:\n" + valor
     local: 'L7',       // "LOCAL: \n" + valor
     data: 'A8'         // "Data:        " + valor (inline, mescla A8:G9)
@@ -202,7 +202,10 @@ const RdoExcel = (function () {
       const cellMod = sh.getCell(`B${r}`);
       cellMod.value = itemMod.descricao || '';
       cellMod.alignment = Object.assign({}, cellMod.alignment, { wrapText: true });
-      sh.getCell(`F${r}`).value = itemMod.quant !== '' && itemMod.quant != null ? Number(itemMod.quant) : null;
+      // Quant vai na coluna G - B:F é uma única mescla (rótulo), escrever
+      // em F (célula secundária da mescla) redireciona pro "mestre" B e
+      // apaga a descrição (bug real, 15/07/2026).
+      sh.getCell(`G${r}`).value = itemMod.quant !== '' && itemMod.quant != null ? Number(itemMod.quant) : null;
 
       const cellEquip = sh.getCell(`H${r}`);
       cellEquip.value = descEquipAbrev;
@@ -461,7 +464,7 @@ const RdoExcel = (function () {
     // 33.75pt, o dobro do normal) pra caber as 2 linhas.
     sh.getCell(CELULAS.contratante).value = 'CONTRATANTE:\n' + state.contratante;
     sh.getCell(CELULAS.obra).value = 'OBRA:\n' + state.obra;
-    sh.getCell(CELULAS.os).value = 'OS: ' + (state.os || '');
+    sh.getCell(CELULAS.os).value = 'OS:\n' + (state.os || '');
     sh.getCell(CELULAS.objeto).value = 'OBJETO DO CONTRATO:\n' + state.objetoContrato;
     sh.getCell(CELULAS.local).value = 'LOCAL:\n' + state.local;
     sh.getCell(CELULAS.data).value = 'Data: ' + formatarDataBR_(state.data);

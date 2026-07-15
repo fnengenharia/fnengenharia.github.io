@@ -6,7 +6,7 @@
 // cada release (o mesmo valor deve ser espelhado em APP_VERSAO_ATUAL no
 // Code.gs, que é o que a atualização automática usa pra saber se tem
 // versão nova pra baixar).
-const VERSAO_APP = 'BETA 0.9.8';
+const VERSAO_APP = 'BETA 0.9.9';
 document.getElementById('versao-app').textContent = VERSAO_APP;
 
 // ---------------------------------------------------------------------------
@@ -866,14 +866,23 @@ async function restaurarEstadoEmAndamento_() {
   return true;
 }
 
-// Botão "Limpar dados salvos" (pedido do Paulo, 10/07): apaga o cache de
-// Contratante/Obra/Serviço/Objeto/Local e limpa os mesmos campos na tela -
-// útil quando o app fixou a obra errada (ex: emprestou o celular pra outra
-// equipe) e precisa "esquecer" antes de preencher um RDO de obra diferente.
+// Botão "Limpar dados salvos" (pedido do Paulo, 10/07; ampliado 15/07/2026
+// depois do Paulo reportar que ficava preenchimento "grudado"): precisa
+// zerar TODO o preenchimento/alteração do RDO em andamento, deixando o
+// formulário exatamente como no primeiro login (só a sessão/login
+// continua valendo - não desloga). Antes só limpava Identificação
+// (Contratante/Obra/.../Equipamentos), mas deixava intocado o
+// CHAVE_ESTADO_EM_ANDAMENTO (Data/Tempo/Observações/Atividades salvos
+// automaticamente, ver salvarEstadoEmAndamento_) - ao reabrir o app depois
+// de "limpar", restaurarEstadoEmAndamento_ trazia tudo de volta do zero
+// mesmo assim. Agora também apaga esse estado e reseta Data/Tempo/
+// Observações/Atividades/Aprovador na tela, igual resetarParaProximoRdo_
+// faz depois de um envio de verdade.
 el.btnLimparIdentificacao.addEventListener('click', () => {
-  if (!confirm('Apagar Contratante/Obra/Serviço/Objeto/Local/OS/Efetivo/Equipamentos salvos neste aparelho? O formulário volta a ficar como se tivesse acabado de abrir o app.')) return;
+  if (!confirm('Apagar TODO o preenchimento e as alterações deste RDO (Contratante/Obra/Serviço/Objeto/Local/OS/Data/Tempo/Observações/Atividades/Efetivo/Equipamentos)? O formulário volta a ficar como no primeiro login.')) return;
 
   localStorage.removeItem(CHAVE_ULTIMA_IDENTIFICACAO);
+  apagarEstadoEmAndamento_();
 
   state.contratante = '';
   state.obra = '';
@@ -900,6 +909,39 @@ el.btnLimparIdentificacao.addEventListener('click', () => {
   state.equipamentos.length = 0;
   renderizarListaQuantCrescente(cfgEfetivo);
   renderizarListaQuantCrescente(cfgEquipamentos);
+
+  state.data = '';
+  el.data.value = '';
+
+  state.tempo = {
+    bom: { manha: false, tarde: false, noite: false },
+    chuva: { manha: false, tarde: false, noite: false },
+    mm: { manha: '', tarde: '', noite: '' }
+  };
+  document.querySelectorAll('.balao').forEach(botao => botao.classList.remove('marcado'));
+  document.querySelectorAll('.mm-chuva').forEach(input => { input.value = ''; });
+
+  state.observacoes = '';
+  el.observacoes.value = '';
+  el.observacoes.style.height = 'auto';
+
+  state.atividadesContratada.length = 0;
+  state.atividadesContratada.push({ inicio: '', fim: '', discriminacao: '', autor: '' });
+  renderizarListaAtividades(cfgAtivContratada);
+
+  state.atividadesContratante.length = 0;
+  state.atividadesContratante.push({ inicio: '', fim: '', discriminacao: '' });
+  renderizarListaAtividades(cfgAtivContratante);
+  atualizarBalaoContratante_();
+
+  // Aprovador (só existe durante revisão interna) e o carimbo de
+  // Data/Hora do Elaborador - Nome/Função do Elaborador continuam vindas
+  // da sessão logada (não é "dado preenchido", é identidade de quem está
+  // logado).
+  state.assinaturaAprovadorNome = '';
+  state.assinaturaAprovadorFuncao = '';
+  state.assinaturaAprovadorDataHora = '';
+  state.assinaturaContratadaDataHora = '';
 
   numeroReservado = null;
   el.previewNumero.textContent = '-';
@@ -940,6 +982,35 @@ function carregarSessaoUsuario_() {
     return bruto ? JSON.parse(bruto) : null;
   } catch (err) {
     return null;
+  }
+}
+
+// Refresca Nome/Função/Perfil da sessão a partir da planilha (15/07/2026) -
+// a sessão fica salva indefinidamente no aparelho (ver comentário acima) e
+// SÓ era preenchida no momento do login: se o Paulo cadastra/corrige a
+// Função de alguém na aba Usuarios DEPOIS que essa pessoa já tinha
+// feito login antes, o app continuava mostrando o valor antigo (vazio ou
+// desatualizado) pra sempre, sem nunca chamar o backend de novo - bug
+// real reportado pelo Paulo (Função não aparecia nas assinaturas mesmo já
+// preenchida na planilha). Silencioso (sem alerta se falhar - mantém o
+// cache local) e só roda com internet. Não mexe durante uma revisão de
+// aprovação interna (aprovacaoInternaAtual_) porque nesse fluxo
+// state.assinaturaContratadaNome/Funcao pertencem ao ELABORADOR original
+// do RDO sendo revisado, não a quem está logado agora.
+async function atualizarSessaoDoServidor_() {
+  const sessaoAtual = carregarSessaoUsuario_();
+  if (!sessaoAtual || !RdoConectividade.estaOnline() || aprovacaoInternaAtual_) return;
+  try {
+    const resp = await RdoApi.login(sessaoAtual.login, sessaoAtual.senha);
+    if (!resp.ok) return;
+    const sessaoAtualizada = { login: sessaoAtual.login, senha: sessaoAtual.senha, nome: resp.nome, funcao: resp.funcao, perfil: resp.perfil };
+    salvarSessaoUsuario_(sessaoAtualizada);
+    state.assinaturaContratadaNome = sessaoAtualizada.nome;
+    state.assinaturaContratadaFuncao = sessaoAtualizada.funcao || '';
+    el.assinaturaContratadaInfo.textContent = 'Elaborador: ' + sessaoAtualizada.nome + (sessaoAtualizada.funcao ? ' (' + sessaoAtualizada.funcao + ')' : '');
+    aplicarPerfilNaUI_(sessaoAtualizada.perfil);
+  } catch (err) {
+    // silencioso - mantém os dados em cache se o backend não responder
   }
 }
 
@@ -2308,6 +2379,11 @@ RdoConectividade.aoMudar(online => { if (online) sincronizarFilaOffline_(); });
 // botão "Verificar atualizações" mostra status na tela.
 RdoConectividade.aoMudar(online => { if (online) verificarAtualizacaoApp_(false); });
 
+// Refresca Nome/Função/Perfil da sessão sempre que a conexão voltar (ver
+// atualizarSessaoDoServidor_) - mesmo padrão de "roda de novo quando tiver
+// internet" já usado acima pra atualização do app e fila offline.
+RdoConectividade.aoMudar(online => { if (online) atualizarSessaoDoServidor_(); });
+
 el.btnConfirmarEnvio.addEventListener('click', async () => {
   el.btnConfirmarEnvio.disabled = true;
   try {
@@ -2448,6 +2524,7 @@ carregarEquipamentosVeiculos();
 const sessaoInicial = carregarSessaoUsuario_();
 if (sessaoInicial) {
   aplicarSessaoNoFormulario_(sessaoInicial);
+  atualizarSessaoDoServidor_();
 } else {
   mostrarTelaLogin_();
 }
