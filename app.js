@@ -6,7 +6,7 @@
 // cada release (o mesmo valor deve ser espelhado em APP_VERSAO_ATUAL no
 // Code.gs, que é o que a atualização automática usa pra saber se tem
 // versão nova pra baixar).
-const VERSAO_APP = 'BETA 0.9.10';
+const VERSAO_APP = 'BETA 0.9.11';
 document.getElementById('versao-app').textContent = VERSAO_APP;
 
 // ---------------------------------------------------------------------------
@@ -538,6 +538,23 @@ function renderizarListaAtividades(cfg) {
 
       valorAnterior = textoNovo;
       item.discriminacao = textoNovo;
+
+      // Iniciais de quem editou (15/07/2026) - só se aplica à lista da
+      // Contratada (Contratante não tem esse conceito, é sempre o link).
+      // Uma linha só chega aqui com `item.autor` já preenchido durante uma
+      // revisão interna com admin_master (bypass total - ver
+      // aplicarTravamentoRevisaoInterna_, único perfil que consegue editar
+      // texto de uma linha travada). Se quem está editando agora é
+      // diferente de quem escreveu originalmente, carimba `editorAutor` -
+      // aparece como um 2º grupo de iniciais no PDF (ver
+      // preencherAtividades_ em excel-fill.js).
+      if (container === el.listaAtivContratada && item.autor) {
+        const sessaoAtual = carregarSessaoUsuario_();
+        if (sessaoAtual && sessaoAtual.nome && sessaoAtual.nome !== item.autor) {
+          item.editorAutor = sessaoAtual.nome;
+        }
+      }
+
       autoGrow(e.target);
       atualizarEstimativa();
     });
@@ -2510,13 +2527,19 @@ el.btnConfirmarEnvio.addEventListener('click', async () => {
       state.assinaturaContratadaDataHora = new Date().toISOString();
     }
 
+    // Autoria por atividade (15/07/2026, iniciais no PDF - ver
+    // [[project_rdo_app]]): antes só carimbava autor quando o RDO passava
+    // por revisão interna; agora TODA atividade da Contratada precisa de
+    // autor, mesmo num envio direto (admin/admin_master que escreveu e
+    // manda sozinho) - carimba com quem está confirmando o envio agora.
+    preencherAutorPadrao_(state.atividadesContratada, sessaoAtual ? sessaoAtual.nome : '');
+
     // Revisão de aprovação interna (14/07/2026): o dono do RDO continua
     // sendo o elaborador original (login/Drive/Meu Perfil); quem revisou
     // agora vira o Aprovador. Rows novas ganham autor = quem revisou.
     let loginParaEnviar = loginAtual;
     let revisaoInterna = null;
     if (aprovacaoInternaAtual_) {
-      preencherAutorPadrao_(state.atividadesContratada, sessaoAtual ? sessaoAtual.nome : '');
       loginParaEnviar = aprovacaoInternaAtual_.loginElaborador;
       state.assinaturaAprovadorDataHora = new Date().toISOString();
       revisaoInterna = {

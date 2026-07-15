@@ -186,19 +186,32 @@ const RdoPreviewOffline = (function () {
     });
   }
 
+  // Iniciais de autoria (15/07/2026) - mesma lógica de excel-fill.js/
+  // iniciaisNome_, duplicada aqui porque este arquivo não importa nada de
+  // lá (mesmo padrão já usado pra formatarDataHoraBR_).
+  function iniciaisNome_(nomeCompleto) {
+    return (nomeCompleto || '').trim().split(/\s+/).filter(Boolean)
+      .map(palavra => palavra[0].toUpperCase()).join('.');
+  }
+
   // Atividades: só desenha o que couber SEM estourar a área impressa (mesmo
   // orçamento de "linhas" já usado em excel-fill.js/preencherAtividades_,
   // reaproveitando RdoExcel.estimarLinhasAtividade) - cada item pode gastar
-  // mais de uma linha física se o texto for longo.
-  // mostrarAutor: mesmo significado de excel-fill.js/preencherAtividades_
-  // (sufixa "(Nome)" só quando o RDO passou por revisão interna).
-  function desenharAtividades_(doc, linhaInicio, capacidadeSlots, itens, mostrarAutor) {
+  // mais de uma linha física se o texto for longo. Sufixo de iniciais
+  // (`item.autor`/`item.editorAutor`) só existe de verdade no bloco
+  // CONTRATADA - mesma lógica de excel-fill.js/preencherAtividades_.
+  function desenharAtividades_(doc, linhaInicio, capacidadeSlots, itens) {
     const naoVazios = itens.filter(item => (item.discriminacao || '').trim() || item.inicio || item.fim);
     let slotsUsados = 0;
     let linhaAtual = linhaInicio;
     for (const item of naoVazios) {
       let texto = (item.discriminacao || '').trim();
-      if (mostrarAutor && item.autor) texto += ' (' + item.autor + ')';
+      if (item.autor) {
+        texto += ' [' + iniciaisNome_(item.autor) + ']';
+        if (item.editorAutor && item.editorAutor !== item.autor) {
+          texto += ' ; [' + iniciaisNome_(item.editorAutor) + ']';
+        }
+      }
       const nLinhas = (typeof RdoExcel !== 'undefined') ? RdoExcel.estimarLinhasAtividade(texto) : 1;
       if (slotsUsados + nLinhas > capacidadeSlots) break;
 
@@ -259,7 +272,7 @@ const RdoPreviewOffline = (function () {
 
     desenharEfetivoEquipVeiculos_(doc, state.efetivo, state.equipamentos);
     const mostrarAprovador = Boolean(state.assinaturaAprovadorNome && state.assinaturaAprovadorNome.trim());
-    desenharAtividades_(doc, 30, 27, state.atividadesContratada, mostrarAprovador);
+    desenharAtividades_(doc, 30, 27, state.atividadesContratada);
     desenharAtividades_(doc, 57, RdoExcel.CAPACIDADE_CONTRATANTE, state.atividadesContratante);
 
     // Assinatura em texto (14/07/2026 - ninguém mais desenha, ver

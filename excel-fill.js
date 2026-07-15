@@ -180,6 +180,17 @@ const RdoExcel = (function () {
     return t.toUpperCase();
   }
 
+  // Iniciais de autoria por atividade (15/07/2026, pedido do Paulo) - ex:
+  // "Paulo Mauricio Cascão Castro Ciccio" -> "P.M.C.C.C". Uma letra por
+  // PALAVRA do nome completo (nome vem da coluna C "Nome" da aba Usuarios,
+  // já salvo por extenso em `item.autor`/`item.editorAutor` - a conversão
+  // pra iniciais só acontece AQUI, na hora de gerar o PDF/xlsx, nunca é
+  // gravada como tal no state, mesmo padrão já usado pra "Data:"/"OS:").
+  function iniciaisNome_(nomeCompleto) {
+    return (nomeCompleto || '').trim().split(/\s+/).filter(Boolean)
+      .map(palavra => palavra[0].toUpperCase()).join('.');
+  }
+
   // Efetivo (MOD) / Equipamentos e Veículos: 12 linhas físicas
   // COMPARTILHADAS (19-30) entre as colunas lado a lado. Equipamentos e
   // Veículos viraram uma lista ÚNICA no formulário (10/07) - os primeiros
@@ -283,13 +294,16 @@ const RdoExcel = (function () {
   // chegar aqui (botão "+ Adicionar" desabilitado e digitação bloqueada
   // no limite), então na prática `itensDescartados` não deveria mais
   // acontecer, é só uma rede de segurança.
-  // mostrarAutor (14/07/2026, papéis de usuário): quando true, cada linha
-  // com `item.autor` preenchido ganha o nome de quem escreveu ao final da
-  // discriminação - "(Fulano)". Só usado no bloco CONTRATADA, e só quando
-  // o RDO passou de fato pela revisão de aprovação interna (ver
-  // mostrarAutorContratada em gerarWorkbook) - um RDO comum (autor único,
-  // sem revisão) nunca mostra essa sufixação.
-  function preencherAtividades_(sh, linhaInicio, capacidadeSlots, itens, mostrarAutor) {
+  // Iniciais de autoria (15/07/2026, pedido do Paulo) - toda atividade da
+  // CONTRATADA com `item.autor` preenchido ganha as iniciais de quem
+  // escreveu ao final, entre colchetes - "[P.M.C.C.C]", SEMPRE (não só
+  // quando passou por revisão interna, ao contrário do "(Nome)" antigo).
+  // Se um admin_master editar uma linha já autorada de outra pessoa
+  // (`item.editorAutor`, ver renderizarListaAtividades em app.js), soma um
+  // 2º grupo de iniciais: "[P.M.C.C.C] ; [F.L.M]". Bloco CONTRATANTE nunca
+  // tem `item.autor` preenchido (vem exclusivamente do link), então nunca
+  // ganha sufixo nenhum aqui - não precisa de parâmetro pra desligar.
+  function preencherAtividades_(sh, linhaInicio, capacidadeSlots, itens) {
     const naoVazios = itens.filter(item => (item.discriminacao || '').trim() || item.inicio || item.fim);
 
     let slotsUsados = 0;
@@ -298,7 +312,12 @@ const RdoExcel = (function () {
 
     for (const item of naoVazios) {
       let texto = (item.discriminacao || '').trim();
-      if (mostrarAutor && item.autor) texto += ' (' + item.autor + ')';
+      if (item.autor) {
+        texto += ' [' + iniciaisNome_(item.autor) + ']';
+        if (item.editorAutor && item.editorAutor !== item.autor) {
+          texto += ' ; [' + iniciaisNome_(item.editorAutor) + ']';
+        }
+      }
       const nLinhas = estimarLinhasAtividade(texto);
       if (slotsUsados + nLinhas > capacidadeSlots) {
         // não coube mais - para aqui (mantém a ordem cronológica das
@@ -477,12 +496,13 @@ const RdoExcel = (function () {
     preencherEfetivoEquipVeiculos_(sh, state.efetivo, state.equipamentos);
     preencherTotais_(sh, state.efetivo, state.equipamentos);
 
-    // Sufixação de autor e linha do Aprovador só fazem sentido quando o RDO
-    // passou pela revisão interna (existe um Aprovador de verdade) - um RDO
-    // de autor único (admin/admin_master enviando direto) nunca mostra
-    // "(Nome)" nas atividades nem a linha 73 (fica oculta).
+    // Linha do Aprovador só faz sentido quando o RDO passou pela revisão
+    // interna (existe um Aprovador de verdade) - um RDO de autor único
+    // (admin/admin_master enviando direto) nunca mostra a linha 73 (fica
+    // oculta). Sufixação de iniciais nas atividades é independente disso
+    // (ver preencherAtividades_) - sempre aparece quando há `item.autor`.
     const mostrarAprovador = Boolean(state.assinaturaAprovadorNome && state.assinaturaAprovadorNome.trim());
-    const resContratada = preencherAtividades_(sh, LINHA_ATIV_CONTRATADA_INICIO, CAPACIDADE_CONTRATADA, state.atividadesContratada, mostrarAprovador);
+    const resContratada = preencherAtividades_(sh, LINHA_ATIV_CONTRATADA_INICIO, CAPACIDADE_CONTRATADA, state.atividadesContratada);
     const resContratante = preencherAtividades_(sh, LINHA_ATIV_CONTRATANTE_INICIO, CAPACIDADE_CONTRATANTE, state.atividadesContratante);
 
     inserirElaborador_(sh, state.assinaturaContratadaFuncao, state.assinaturaContratadaNome, state.assinaturaContratadaDataHora);
