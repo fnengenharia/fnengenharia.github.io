@@ -246,38 +246,6 @@ textarea { resize: vertical; overflow: hidden; }
 .linha-atividade label { margin: 0 0 4px; }
 .linha-atividade textarea { min-height: 40px; }
 
-.canvas-assinatura {
-  display: block;
-  width: 100%;
-  height: 160px;
-  background: #fff;
-  border: 1px dashed var(--borda);
-  border-radius: var(--raio-md);
-  touch-action: none;
-  margin-top: 4px;
-}
-
-/* Marca d'água da FN só no canvas da Contratada (é a assinatura da
-   própria empresa) - fica só no CSS de fundo do elemento, nunca entra no
-   PNG exportado (canvas.toDataURL() só captura o que foi desenhado no
-   buffer do canvas, não o background CSS por trás dele). */
-#canvas-assinatura-contratada {
-  background-image: url('assets/logo_marca_dagua.png');
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 110px;
-}
-
-/* Marca d'água do Contratante (imagem genérica de "cliente/fiscal de
-   obra" escolhida pelo Paulo, 10/07) no canvas da Contratante - mesma
-   lógica da marca d'água da FN acima. */
-#canvas-assinatura {
-  background-image: url('assets/logo_marca_dagua_contratante.png');
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 110px;
-}
-
 .botao-secundario,
 .botao-principal {
   margin-bottom: 8px;
@@ -299,17 +267,6 @@ textarea { resize: vertical; overflow: hidden; }
   margin: -4px 0 10px;
 }
 .orcamento-info.cheio { color: var(--erro); font-weight: bold; }
-
-.linha-botoes-assinatura {
-  display: flex;
-  gap: 8px;
-}
-.linha-botoes-assinatura .botao-secundario { margin-top: 0; }
-.btn-travar.travado {
-  background: var(--erro);
-  color: #fff;
-  border-color: var(--erro);
-}
 
 .botao-secundario {
   width: 100%;

@@ -32,6 +32,7 @@ const RdoExcel = (function () {
     pagina: 'U4',      // mescla U4:V5, mesma lógica - rótulo em U3
     contratante: 'A6', // "CONTRATANTE:\n" + valor
     obra: 'L6',        // "OBRA: \n" + valor
+    os: 'U6',          // "OS:                 " + valor (14/07/2026, célula já vem com placeholder cru "OS: XXXX" no modelo)
     objeto: 'A7',      // "OBJETO DO CONTRATO:\n" + valor
     local: 'L7',       // "LOCAL: \n" + valor
     data: 'A8'         // "Data:        " + valor (inline, mescla A8:G9)
@@ -59,9 +60,9 @@ const RdoExcel = (function () {
   const LINHAS_QUANT = [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27];
   const LINHA_TOTAIS = 28;
   const LINHA_ATIV_CONTRATADA_INICIO = 30; // até 56 no modelo (27 linhas) - modelo novo de 13/07/2026
-  const LINHA_ATIV_CONTRATANTE_INICIO = 57; // até 72 no modelo (16 linhas) - modelo novo de 13/07/2026
+  const LINHA_ATIV_CONTRATANTE_INICIO = 57; // até 69 no modelo (13 linhas) - modelo novo de 14/07/2026 (encolheu de 16 pra 13: a área de assinatura em texto ocupa mais linhas que os antigos blocos de imagem)
   const CAPACIDADE_CONTRATADA = 27; // em "linhas" de ALTURA_POR_LINHA_PT
-  const CAPACIDADE_CONTRATANTE = 16;
+  const CAPACIDADE_CONTRATANTE = 13;
 
   // heurístico de nº de caracteres que cabem numa linha do bloco E:V
   // (Arial 10). Calibrado primeiro via AutoFit numa coluna de teste
@@ -91,6 +92,18 @@ const RdoExcel = (function () {
   function formatarDataBR_(isoYyyyMmDd) {
     const [ano, mes, dia] = isoYyyyMmDd.split('-');
     return `${dia}/${mes}/${ano}`;
+  }
+
+  // Data/hora da assinatura em texto (14/07/2026) - escrita como STRING já
+  // formatada (não Date+numFmt) pra evitar qualquer ambiguidade de timezone/
+  // locale do Excel, mesmo raciocínio já usado pra "Data: "+formatarDataBR_.
+  // dataHoraIso vem de `new Date().toISOString()` capturado no MOMENTO do
+  // clique de salvar/enviar, no fuso do próprio navegador de quem assinou.
+  function formatarDataHoraBR_(dataHoraIso) {
+    if (!dataHoraIso) return '';
+    const d = new Date(dataHoraIso);
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   }
 
   function diaSemanaJs_(isoYyyyMmDd) {
@@ -296,6 +309,12 @@ const RdoExcel = (function () {
       sh.getCell(`C${linhaAtual}`).value = item.inicio || '-';
       sh.getCell(`D${linhaAtual}`).value = item.fim || '-';
       sh.getCell(`E${linhaAtual}`).value = texto;
+      // Bug real corrigido (14/07/2026): as últimas linhas de cada bloco
+      // (55/56 na Contratada, 69 na Contratante) vêm OCULTAS por padrão no
+      // modelo (reserva de overflow, mesmo padrão de sempre) - sem forçar
+      // `hidden = false` aqui, um item que realmente caísse nelas ficava
+      // com o VALOR gravado mas invisível (linha continuava escondida).
+      sh.getRow(linhaAtual).hidden = false;
       sh.getRow(linhaAtual).height = ALTURA_POR_LINHA_PT * nLinhas;
 
       slotsUsados += nLinhas;
@@ -324,92 +343,44 @@ const RdoExcel = (function () {
   }
 
   // Modelo novo de 13/07/2026: área de assinatura virou 3 blocos lado a
-  // lado nas linhas 73-76 (antes eram 2 blocos nas linhas 63-66) - ver
-  // project_rdo_app release da troca de modelo. "Elaborador" e "Aprovador"
-  // (ambos lado Contratada) agora são 3 células SEPARADAS cada (rótulo
-  // estático em cima, imagem no meio, rótulo+nome embaixo) em vez de 1
-  // mescla única com alinhamento manual - não precisa mais do truque
-  // vertical:'bottom' pra empurrar o texto pro fim do bloco, o rótulo+nome
-  // já tem célula própria (A76/G76) dedicada embaixo da imagem.
-
-  // As células de rótulo do modelo novo (A76/G76/P73) já vêm com ": " no
-  // final do texto ("Responsável da Contratada: ") - diferente do modelo
-  // antigo, que não tinha o dois-pontos (só "Responsável da Contratada").
-  // Sem essa normalização, concatenar ": "+nome direto duplicava o
-  // dois-pontos ("...Contratada:: Nome") - achado testando visualmente o
-  // PDF gerado com o modelo novo.
-  function rotuloComNome_(rotuloCru, fallback, nome) {
-    let rotulo = String(rotuloCru || '').trim() || fallback;
-    rotulo = rotulo.replace(/:\s*$/, ':');
-    return nome ? `${rotulo} ${nome}` : rotulo;
+  // lado nas linhas 71-74 (antes eram imagem desenhada nas linhas 73-76) -
+  // ver [[project_rdo_app]] release de 14/07/2026. Ninguém mais desenha
+  // assinatura em lugar nenhum (nem Elaborador/Aprovador nem Contratante) -
+  // virou uma tabela de TEXTO com cabeçalho fixo do modelo (linha 71:
+  // Função/Responsável/Assinado por/Data da assinatura) e 3 linhas de dados
+  // (72 Elaborador, 73 Aprovador, 74 Contratante), cada uma com 3 células
+  // a preencher: Função (A), Assinado por/Nome (K, com shrinkToFit pra
+  // nomes longos não estourarem a coluna estreita) e Data/hora (R, texto já
+  // formatado dd/mm/aaaa hh:mm:ss). A célula de rótulo do "Responsável"
+  // (F72/F73/F74 - "Elaborador"/"Aprovador"/"Contratante") já é fixa no
+  // modelo, nunca escrita pelo código.
+  function preencherLinhaAssinatura_(sh, linha, funcao, nome, dataHoraIso) {
+    sh.getCell('A' + linha).value = (funcao || '').trim();
+    const celNome = sh.getCell('K' + linha);
+    celNome.value = (nome || '').trim();
+    celNome.alignment = Object.assign({}, celNome.alignment, { shrinkToFit: true });
+    sh.getCell('R' + linha).value = formatarDataHoraBR_(dataHoraIso);
   }
 
-  // Bloco "Elaborador" (A73 rótulo estático "Elaborador", A74:F75 área da
-  // assinatura, A76 "Responsável da Contratada: "+nome).
-  function inserirAssinaturaElaborador_(workbook, sh, nome, base64Png) {
-    const nomeLimpo = (nome || '').trim();
-    if (!nomeLimpo && !base64Png) return;
-
-    const cell = sh.getCell('A76');
-    cell.value = rotuloComNome_(cell.value, 'Responsável da Contratada:', nomeLimpo);
-
-    if (base64Png) {
-      const imageId = workbook.addImage({ base64: base64Png, extension: 'png' });
-      // Calibrado a pedido do Paulo (14/07): eixo das 3 assinaturas entre
-      // as linhas 74:75 (centro em Y=1084.8pt, topo da linha 75), eixo das
-      // colunas do Elaborador entre C:D (X=108pt) - tl calculado centrando
-      // a imagem (90x22px = 67.5x16.5pt) nesses eixos, usando os mesmos
-      // Rows(n).Top/Range(col).Left medidos via Excel COM de sempre.
-      sh.addImage(imageId, {
-        tl: { col: 2.0625, row: 73.4271 },
-        ext: { width: 90, height: 22 }
-      });
-    }
+  function inserirElaborador_(sh, funcao, nome, dataHoraIso) {
+    preencherLinhaAssinatura_(sh, 72, funcao, nome, dataHoraIso);
   }
 
-  // Bloco "Aprovador" (G73/G74:O75/G76) - espelha o Elaborador. Só
-  // preenchido quando o RDO passou por revisão de um administrador (ver
-  // fluxo de aprovação interna) - a assinatura é a JÁ SALVA do login de
-  // quem revisou, nunca desenhada na hora.
-  function inserirAssinaturaAprovador_(workbook, sh, nome, base64Png) {
-    const nomeLimpo = (nome || '').trim();
-    if (!nomeLimpo && !base64Png) return;
-
-    const cell = sh.getCell('G76');
-    cell.value = rotuloComNome_(cell.value, 'Responsável da Contratada:', nomeLimpo);
-
-    if (base64Png) {
-      const imageId = workbook.addImage({ base64: base64Png, extension: 'png' });
-      // Eixo das colunas no MEIO da coluna J (X=327pt, pedido do Paulo 14/07).
-      sh.addImage(imageId, {
-        tl: { col: 8.375, row: 73.4271 },
-        ext: { width: 90, height: 22 }
-      });
+  // Só preenchido quando o RDO passou por revisão de um administrador (ver
+  // fluxo de aprovação interna) - Função/Nome já salvos do login de quem
+  // revisou. Quando não há Aprovador (RDO enviado direto por quem já é
+  // admin/admin_master, sem revisão de terceiros), a linha 73 inteira fica
+  // OCULTA - o próprio autor já é autoridade suficiente pelo conteúdo.
+  function inserirAprovador_(sh, funcao, nome, dataHoraIso, mostrar) {
+    if (!mostrar) {
+      sh.getRow(73).hidden = true;
+      return;
     }
+    preencherLinhaAssinatura_(sh, 73, funcao, nome, dataHoraIso);
   }
 
-  // Área "Responsável da Contratante" (agora P73:V76, mescla única de 4
-  // linhas - mesma forma/lógica do bloco antigo K63:V66, só mudou de
-  // posição, sem mudança de padrão).
-  function inserirAssinatura_(workbook, sh, nome, base64Png) {
-    const nomeLimpo = (nome || '').trim();
-    if (!nomeLimpo && !base64Png) return;
-
-    const cell = sh.getCell('P73');
-    cell.value = rotuloComNome_(cell.value, 'Responsável da Contratante:', nomeLimpo);
-    cell.alignment = Object.assign({}, cell.alignment, { vertical: 'bottom' });
-
-    if (base64Png) {
-      const imageId = workbook.addImage({ base64: base64Png, extension: 'png' });
-      // Eixo das colunas entre S:T (X=554.4pt), mesmo eixo de linhas
-      // 74:75 dos outros dois (pedido do Paulo 14/07) - antes usava o
-      // bloco inteiro de 4 linhas, agora fica no mesmo "corredor" que
-      // Elaborador/Aprovador.
-      sh.addImage(imageId, {
-        tl: { col: 17.115, row: 73.4271 },
-        ext: { width: 90, height: 22 }
-      });
-    }
+  function inserirContratante_(sh, funcao, nome, dataHoraIso) {
+    preencherLinhaAssinatura_(sh, 74, funcao, nome, dataHoraIso);
   }
 
   async function carregarTemplate_() {
@@ -490,6 +461,7 @@ const RdoExcel = (function () {
     // 33.75pt, o dobro do normal) pra caber as 2 linhas.
     sh.getCell(CELULAS.contratante).value = 'CONTRATANTE:\n' + state.contratante;
     sh.getCell(CELULAS.obra).value = 'OBRA:\n' + state.obra;
+    sh.getCell(CELULAS.os).value = 'OS: ' + (state.os || '');
     sh.getCell(CELULAS.objeto).value = 'OBJETO DO CONTRATO:\n' + state.objetoContrato;
     sh.getCell(CELULAS.local).value = 'LOCAL:\n' + state.local;
     sh.getCell(CELULAS.data).value = 'Data: ' + formatarDataBR_(state.data);
@@ -502,20 +474,17 @@ const RdoExcel = (function () {
     preencherEfetivoEquipVeiculos_(sh, state.efetivo, state.equipamentos);
     preencherTotais_(sh, state.efetivo, state.equipamentos);
 
-    // Sufixação de autor só faz sentido quando existe um Aprovador (RDO
-    // passou pela revisão interna) - um RDO de autor único nunca mostra
-    // "(Nome)" nas atividades, mesmo que item.autor esteja preenchido.
-    const mostrarAutorContratada = Boolean(state.assinaturaAprovadorNome && state.assinaturaAprovadorNome.trim());
-    const resContratada = preencherAtividades_(sh, LINHA_ATIV_CONTRATADA_INICIO, CAPACIDADE_CONTRATADA, state.atividadesContratada, mostrarAutorContratada);
+    // Sufixação de autor e linha do Aprovador só fazem sentido quando o RDO
+    // passou pela revisão interna (existe um Aprovador de verdade) - um RDO
+    // de autor único (admin/admin_master enviando direto) nunca mostra
+    // "(Nome)" nas atividades nem a linha 73 (fica oculta).
+    const mostrarAprovador = Boolean(state.assinaturaAprovadorNome && state.assinaturaAprovadorNome.trim());
+    const resContratada = preencherAtividades_(sh, LINHA_ATIV_CONTRATADA_INICIO, CAPACIDADE_CONTRATADA, state.atividadesContratada, mostrarAprovador);
     const resContratante = preencherAtividades_(sh, LINHA_ATIV_CONTRATANTE_INICIO, CAPACIDADE_CONTRATANTE, state.atividadesContratante);
 
-    inserirAssinaturaElaborador_(workbook, sh, state.assinaturaContratadaNome, state.assinaturaContratadaImagemBase64);
-    // Aprovador só existe quando o RDO passou por revisão de um
-    // administrador (fluxo de aprovação interna) - a função já é um no-op
-    // se esses campos não existirem no state, então é seguro chamar aqui
-    // incondicionalmente.
-    inserirAssinaturaAprovador_(workbook, sh, state.assinaturaAprovadorNome, state.assinaturaAprovadorImagemBase64);
-    inserirAssinatura_(workbook, sh, state.assinaturaNome, state.assinaturaImagemBase64);
+    inserirElaborador_(sh, state.assinaturaContratadaFuncao, state.assinaturaContratadaNome, state.assinaturaContratadaDataHora);
+    inserirAprovador_(sh, state.assinaturaAprovadorFuncao, state.assinaturaAprovadorNome, state.assinaturaAprovadorDataHora, mostrarAprovador);
+    inserirContratante_(sh, state.assinaturaFuncao, state.assinaturaNome, state.assinaturaDataHora);
 
     if (opts && opts.apenasPreview) {
       await inserirMarcaDaguaPreview_(workbook, sh);
@@ -524,8 +493,11 @@ const RdoExcel = (function () {
     const buffer = await workbook.xlsx.writeBuffer();
     const { base64, blob } = await bufferParaBase64_(buffer);
 
-    const numeroFormatado = String(numero).padStart(3, '0');
-    const fileName = `RDO_${numeroFormatado}_${state.obra}_${state.data}.xlsx`.replace(/[\\/:*?"<>|]/g, '-');
+    // Numeração nova (14/07/2026) já vem no formato "OS-AAAAMMDD" (com
+    // sufixo "-2"/"-3" se houver mais de 1 no mesmo dia, ver
+    // montarNumeroRdo_ no Code.gs) - não precisa mais de padStart, era só
+    // pro contador sequencial antigo (ex: "1" -> "001").
+    const fileName = `RDO_${numero}_${state.obra}_${state.data}.xlsx`.replace(/[\\/:*?"<>|]/g, '-');
 
     const avisos = [];
     if (resContratada.itensDescartados > 0) {

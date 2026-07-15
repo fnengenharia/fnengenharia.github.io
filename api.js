@@ -14,54 +14,74 @@
 
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxYyo1aUt0NdsHsaALuXZhqpO3IZc5fhrnBJmtSXaR9nyjl95z9LM82I3YYkvP0iP0m/exec';
 
-// Cópia da lista inicial (backend/obras_iniciais.csv) embutida como fallback:
-// usada enquanto APPS_SCRIPT_URL não estiver configurada, e também como
-// modo offline caso o celular não tenha internet no momento (nesse caso o
-// RDO nº mostrado é só uma prévia local, não reservado de verdade - a
-// numeração oficial só é confirmada quando o envio ao backend funcionar).
+// Cópia da lista inicial (obras ativas/recentes, OS 1294-1351, extraídas de
+// "Lista de serviços (OS).xls") embutida como fallback: usada enquanto
+// APPS_SCRIPT_URL não estiver configurada, e também como modo offline caso
+// o celular não tenha internet no momento (nesse caso o RDO nº mostrado é
+// só uma prévia local, não reservado de verdade - a numeração oficial só é
+// confirmada quando o envio ao backend funcionar). Coluna OS acrescentada
+// 14/07/2026 - mesma fonte usada pra reconstruir a aba Obras real (ver
+// migrarObrasComOS_ em Code.gs).
 const OBRAS_FALLBACK = [
-  ['Consórcio Av. Liberdade', 'Avenida Liberdade', 'Locação de equipamento (escavada)', 'Belém / PA'],
-  ['Consórcio Duplicação Marinha', 'Rua da Marinha', 'Hélice', 'Belém / PA'],
-  ['UP Construtora e Incorporadora', 'Edificação Residencial Multifamiliar - Quintas das Carmitas', 'Sondagem à percussão', 'Ananindeua / PA'],
-  ['Marcos Formento', 'Área para extração de areia', 'Sondagem à percussão', 'Bujaru / PA'],
-  ['Escola Adventista da Pedreira', 'Escola Adventista da Pedreira', 'Hélice', 'Belém / PA'],
-  ['Kemp Engenharia', 'Ed. Ilha de Hokkaido', 'Secante', 'Vila Velha / ES'],
-  ['Harmonic Empreendimentos (Laviola)', 'Ed. Harmonic', 'Hélice', 'Guarapari / ES'],
-  ['Consórcio PCB (Paulitec)', 'Viaduto João Paulo II', 'Locação do Martelo Vibratório acoplado em escavadeira', 'Belém / PA'],
-  ['Proeng (Santa Terezinha XII)', 'Ed. Camburi Reserve', 'Raiz', 'Vitória / ES'],
-  ['Consórcio Murutucu (OCC Construções e Participações)', 'Canal Murutucu', 'Fornecimento de estacas pré-moldadas de concreto armado', 'Belém / PA'],
-  ['Conorte Serviços Industriais (Conorte-PA)', 'Área 10A/B - Calcinação de Alumina Hydro', 'Raiz', 'Barcarena / PA'],
-  ['Consórcio Fidelis', 'Sistema de Abastecimento de Água do Bairro Fidelis', 'Hélice', 'Outeiro - Belém / PA'],
-  ['Consórcio Fidelis', 'Sistema de Abastecimento de Água do Bairro Fidelis', 'Locação de equipamento', 'Outeiro - Belém / PA'],
-  ['Consórcio Fidelis', 'Sistema de Abastecimento de Água do Bairro Fidelis', 'PIT', 'Outeiro - Belém / PA'],
-  ['J House Empreendimentos', 'Edifício Heleganz', 'Hélice', 'Vila Velha / ES'],
-  ['Canal Construtora', 'Edifício Canal One - Estacas de reforço', 'Raiz', 'Vitória / ES'],
-  ['Empreendimento Loja Três Praias', 'Ed. Antônio Dias', 'Hélice', 'Guarapari / ES'],
-  ['Itaparica Living Suites (Sipolatti)', 'Edificação residencial', 'Hélice', 'Vila Velha / ES'],
-  ['Llucena Infraestrutura', 'OAE - KM 374 Fase 2 - EFC Vale (Km 331,03 a Km 455,85)', 'Prancha Metálica', 'Buriticupu / MA'],
-  ['Conorte Serviços Industriais (Conorte-PA)', 'Área 10A/B - Calcinação de Alumina Hydro', 'Locação de equipamento (guincho plataforma)', 'Barcarena / PA'],
-  ['Paysandu Sport Club', 'Reforma e Modernização do Estádio da Curuzu', 'Sondagem à percussão', 'Belém / PA'],
-  ['Mar do Norte Construtora e Incorporadora', 'Ed. Isabela', 'Hélice', 'Vila Velha / ES'],
-  ['JPF Engenharia', 'Ed. DUE', 'Hélice', 'Vila Velha / ES'],
-  ['DOM Engenharia', 'Galpão Obratec', 'Hélice', 'Belém / PA'],
-  ['Calha Norte', 'Terminal Portuário', 'Locação de equipamento (Martelo Vibratório)', 'Santarém / PA'],
-  ['Kemp Engenharia', 'Ed. Ilha de Hokkaido', 'Hélice', 'Vila Velha / ES'],
-  ['Normatel Incorporações', 'Empreendimento Bosque Iguatemi', 'Secante', 'Fortaleza / CE'],
-  ['Impacto Engenharia', 'Ilha de Camburi', 'Hélice', 'Vitória / ES'],
-  ['IC Construtora (JC 1977)', 'Ed. JC 1977 - Contenção', 'Hélice', 'Vila Velha / ES'],
-  ['Lux Três Barras Empreendimentos', 'Edifício Três Barras', 'Hélice', 'Linhares / ES'],
-  ['Proeng (Empreendimento IT18)', 'Royal Lancaster Residence', 'Hélice', 'Vila Velha / ES'],
-  ['M Norte Engenharia e Projetos', 'JABIL', 'Escavada', 'Manaus / AM'],
-  ['Consórcio Maguari', 'Ponte sobre o Furo Maguari', 'Hélice', 'Belém / PA'],
-  ['IACIT Soluções Tecnológicas', 'Implantação Radar Meteorológico - DTCEA-CC', 'Raiz em solo e rocha', 'Serra do Cachimbo - Novo Progresso / PA'],
-  ['Consórcio Av. Liberdade', 'Implantação e Pavimentação da Avenida Liberdade (5ª Campanha)', 'Sondagem à percussão', 'Belém / PA'],
-  ['Construtora Cidade', 'Elevado da Forquilha', 'Hélice', 'São Luís / MA'],
-  ['Azevedo Lobo Engenharia', 'Skyline Beach Residence', 'Hélice', 'Salinópolis / PA'],
-  ['Consórcio Av. Liberdade', 'Avenida Liberdade', 'Hélice', 'Belém / PA'],
-  ['Escola Adventista da Pedreira', 'Escola Adventista da Pedreira', 'Controle tecnológico', 'Belém / PA'],
-  ['ICA Construtora', 'Ed. On Beach - Contenção', 'Hélice', 'Vila Velha / ES'],
-  ['ICA Construtora', 'Ed. Dijon', 'Hélice', 'Vila Velha / ES']
-].map(([cliente, obra, servico, local]) => ({ cliente, obra, servico, local }));
+  ['PARK NORTE BELEM LTDA.', 'Park Norte Belém - Galpão 4', 'helice', 'Benevides / PA', 1294],
+  ['RS CONSTRUÇÕES', 'Não informada dentro da HYDRO', 'PCE', 'Barcarena / PA', 1295],
+  ['RS CONSTRUÇÕES', 'Não informada dentro da HYDRO', 'PIT', 'Barcarena / PA', 1296],
+  ['NORMATEL INCORPORAÇÕES', 'Next DM 210', 'escavada', 'Fortaleza / CE', 1297],
+  ['CONSORCIO VLT AEROCASTELAO', 'Elevado VLT Aeroporto - Castelão', 'helice', 'Fortaleza / CE', 1298],
+  ['CONSORCIO MERGULHÃO NORTE SUL.', 'Av. Dante Micheline e Gelu Vervloet.', 'hélice', 'Vitória / ES', 1299],
+  ['WM EMPREENDIMENTOS IMOB. LTDA', 'Anexo Lojas', 'hélice', 'Castanhal/PA', 1300],
+  ['WM EMPREENDIMENTOS IMOB. LTDA', 'ED. Garagem', 'hélice', 'Castanhal/PA', 1301],
+  ['CANAL CONSTRUTORA', 'Ed. Level', 'Secante', 'Vila Velha / ES', 1302],
+  ['QUALITY CONSTRUTORA.', 'Allure Residence.', 'hélice', 'Guarapari / ES', 1303],
+  ['SACS CONSTRUÇÃO E MONTAGEM LTDA.', 'Prestação de consultoria técnica presencial. Avaliação aterro (Passagem aérea km 09 e km 13)', 'consultoria geotécnica', 'Paragominas / PA', 1304],
+  ['Kemp Engenharia', 'Ed. Ilha de Hokkaido', 'hélice', 'Vila Velha / ES', 1305],
+  ['RED ENGENHARIA LTDA', 'Escola - Prédio Autismo', 'escavadas', 'Manaus / AM', 1306],
+  ['CONSÓRCIO AV. LIBERDADE', 'Avenida Liberdade', 'Locação de equipamento (escavada)', 'Belem / PA', 1307],
+  ['ANTONIA BENEDITA INDUSTRIA DE PANIFICACAO LTDA - CASA ASSIS', 'Panificadora Assis', 'Locação de equipamento (guindaste)', 'Ananindeua / PA', 1308],
+  ['Consorcio duplicação marinha', 'Rua da marinha', 'hélice', 'Belem / PA', 1309],
+  ['UP CONSTRUTORA E INCORPORADORA.', 'Edificação Residencial Multifamiliar_Quintas das Carmitas', 'sondagem à percussão', 'Ananindeua / PA', 1310],
+  ['Marcos Formento', 'Área para extração de areia', 'sondagem à percussão', 'Bujaru/PA', 1311],
+  ['ESCOLA ADVENTISTA DA PEDREIRA', 'Escola Adventista da Pedreira', 'hélice', 'Belem / PA', 1312],
+  ['Kemp Engenharia', 'Ed. Ilha de Hokkaido', 'Secante', 'Vila Velha / ES', 1313],
+  ['HARMONIC EMPREENDIMENTOS IMOBILIARIOS SPE LTDA (LAVIOLA)', 'Ed. Harmonic', 'hélice', 'Guarapari / ES', 1314],
+  ['Consórcio PCB (PAULITEC).', 'Viaduto João Paulo II', 'Locação do Martelo Vibratório acoplado em escavadeira', 'Belem / PA', 1315],
+  ['ELECNOR', 'SE Tucuruí - Área Energizada', 'sondagem à percussão', 'Tucuruí / PA', 1316],
+  ['EMPREENDIMENTO IMOBILIÁRIO SANTA TEREZINHA XII SPE LTDA (Proeng).', 'Ed. Camburi Reserve', 'raiz', 'Vitória / ES', 1317],
+  ['Consórcio Murutucu (OCC CONSTRUÇÕES E PARTICIPAÇÕES)', 'Canal Murutucu', 'Fornecimento de estacas pré-moldadas de concreto armado', 'Belem / PA', 1318],
+  ['CONORTE SERVIÇOS INDUSTRIAIS LTDA (CONORTE-PA', 'Área 10A / B - Calcinação de Alumina Hydro', 'raiz', 'Barcarena / PA', 1319],
+  ['CONSÓRCIO FIDELIS', 'Sistema de Abastecimento de Água do Bairro Fidelis', 'hélice', 'Outeiro - Belém / PA', 1320],
+  ['CONSÓRCIO FIDELIS', 'Sistema de Abastecimento de Água do Bairro Fidelis', 'Locação de equipamento', 'Outeiro - Belém / PA', 1321],
+  ['CONSÓRCIO FIDELIS', 'Sistema de Abastecimento de Água do Bairro Fidelis', 'PIT', 'Outeiro - Belém / PA', 1322],
+  ['J HOUSE EMPREENDIMENTOS SPE LTDA', 'Edifício Heleganz', 'hélice', 'Vila Velha / ES', 1323],
+  ['CANAL CONSTRUTORA', 'EDIFÍCIO CANAL ONE – Estacas de reforço', 'raiz', 'Vitória / ES', 1324],
+  ['EMPREENDIMENTO LOJA TRÊS PRAIAS', 'ED. ANTÔNIO DIAS', 'hélice', 'Guarapari / ES', 1325],
+  ['ITAPARICA LIVING SUITES SPE LTDA (SIPOLATTI.INC)', 'Edificação residencial', 'hélice', 'Vila Velha / ES', 1326],
+  ['LLUCENA INFRAESTRUTURA', 'OAE - KM 374 Fase 2 - EFC Vale (Km 331,03 a Km 455,85)', 'Prancha Metálica', 'Buriticupu / MA', 1327],
+  ['CONORTE SERVIÇOS INDUSTRIAIS LTDA (CONORTE-PA', 'Área 10A / B - Calcinação de Alumina Hydro', 'Locação de equipamento (guincho plataforma)', 'Barcarena / PA', 1328],
+  ['PAYSANDU SPORT CLUB', 'REFORMA E MODERNIZAÇÃO DO ESTÁDIO DA CURUZU.', 'sondagem à percussão', 'Belém / PA', 1329],
+  ['MAR DO NORTE CONSTRUTORA E INCORPORADORA LTDA', 'Ed. Isabela', 'hélice', 'Vila Velha / ES', 1330],
+  ['JPF ENGENHARIA', 'Ed. DUE', 'hélice', 'Vila Velha / ES', 1331],
+  ['DOM ENGENHARIA', 'Galpão Obratec', 'hélice', 'Belém / PA', 1332],
+  ['CALHA NORTE', 'Terminal Portuário', 'Locação de equipamento (Martelo Vibratório)', 'Santarém / PA', 1333],
+  ['Kemp Engenharia', 'Ed. Ilha de Hokkaido', 'hélice', 'Vila Velha / ES', 1334],
+  ['NORMATEL INCORPORAÇÕES', 'Empreendimento Bosque Iguatemi', 'Secante', 'Fortaleza / CE', 1335],
+  ['Impacto engenharia ltda', 'Ilha de camburi', 'hélice', 'Vitoria / ES', 1336],
+  ['JC 1977 IC 004 EMPREENDIMENTOS IMOBILIARIOS SPE LTDA (IC CONSTRUTORA)', 'Ed. JC 1977 – CONTENÇÃO', 'hélice', 'Vila Velha / ES', 1337],
+  ['LUX TRÊS BARRAS EMPREENDIMENTOS', 'Edifício Três Barras', 'hélice', 'Linhares / ES', 1338],
+  ['EMPREENDIMENTO IT18 SPE LTDA (PROENG)', 'Royal Lancaster Residence', 'hélice', 'Vila Velha / ES', 1339],
+  ['M NORTE ENGENHARIA E PROJETOS', 'JABIL', 'escavada', 'Manaus / AM', 1340],
+  ['Consorcio Maguari', 'Ponte sobre o furo Maguari', 'hélice', 'Belém / PA', 1341],
+  ['IACIT SOLUÇÕES TECNOLOGICAS S.A', 'IMPLANTAÇÃO RADAR METEOROLÓGICO - DTCEA-CC', 'raiz em solo e rocha', 'Serra do Cachimbo – Novo Progresso / PA. Localidade fica a cerca de 95 km de Guarantã do Norte/MT', 1342],
+  ['Consórcio Av Liberdade', 'Implantação e Pavimentação da Avenida Liberdade (5ª Campanha)', 'sondagem à percussão', 'Belém / PA', 1343],
+  ['CONSTRUTORA CIDADE', 'ELEVADO DA FORQUILHA', 'HÉLICE', 'São Luís / MA', 1344],
+  ['Azevedo Lobo Engenharia', 'Skyline Beach Residence', 'helice', 'Salinópolis / PA', 1345],
+  ['Consórcio Av Liberdade', 'Avenida Liberdade', 'helice', 'Belém / PA', 1346],
+  ['ESCOLA ADVENTISTA DA PEDREIRA', 'Escola Adventista da Pedreira', 'controle tecnologico', 'Belem / PA', 1347],
+  ['ICA CONSTRUTORA', 'Ed. On Beach – CONTENÇÃO', 'hélice', 'Vila Velha / ES', 1348],
+  ['ICA CONSTRUTORA', 'Ed. Dijon', 'hélice', 'Vila Velha / ES', 1349],
+  ['RADANA CONSTRUÇÕES LTDA', 'Escola Mário Gurgel II', 'hélice', 'Vila Velha / ES', 1350],
+  ['LUVI IMPLEMENTOS LTDA', 'Edificação Associação Beneficente Espírita Novo Tempo - ABENT', 'sondagem à percussão', 'Belém / PA', 1351]
+].map(([cliente, obra, servico, local, os]) => ({ cliente, obra, servico, local, os: String(os) }));
 
 // Cópia da lista inicial (backend/equipamentos_iniciais.csv), extraída da
 // planilha "Maquinas.xlsx" (frota real da FN) - mesmo papel do
@@ -281,15 +301,18 @@ const RdoApi = (function () {
     return json;
   }
 
-  function reservarNumero(cliente, obra) {
-    return postJson_({ action: 'reservarNumero', cliente, obra });
+  // data/os (14/07/2026) - numeração nova "OS-AAAAMMDD", ver montarNumeroRdo_
+  // no Code.gs. Os 4 campos são obrigatórios pro backend agora.
+  function reservarNumero(cliente, obra, data, os) {
+    return postJson_({ action: 'reservarNumero', cliente, obra, data, os });
   }
 
   // tokenAprovacaoInterna/loginAprovador/nomeAprovador (14/07/2026, opcionais)
   // - só quando este envio conclui uma revisão de aprovação interna (ver
-  // [[project_rdo_app]] release de papéis de usuário).
-  function enviarRDO({ cliente, obra, data, xlsxBase64, pdfBase64, fileName, emailContratante, login, tokenAprovacaoInterna, loginAprovador, nomeAprovador }) {
-    return postJson_({ action: 'enviarRDO', cliente, obra, data, xlsxBase64, pdfBase64, fileName, emailContratante, login, tokenAprovacaoInterna, loginAprovador, nomeAprovador });
+  // [[project_rdo_app]] release de papéis de usuário). os (14/07/2026) -
+  // base da numeração nova.
+  function enviarRDO({ cliente, obra, data, xlsxBase64, pdfBase64, fileName, emailContratante, login, tokenAprovacaoInterna, loginAprovador, nomeAprovador, os }) {
+    return postJson_({ action: 'enviarRDO', cliente, obra, data, xlsxBase64, pdfBase64, fileName, emailContratante, login, tokenAprovacaoInterna, loginAprovador, nomeAprovador, os });
   }
 
   function previsualizarRDO({ xlsxBase64, fileName }) {
@@ -304,9 +327,10 @@ const RdoApi = (function () {
   }
 
   // Aprovação do Contratante por e-mail (11/07) - ver www/aprovacao.html.
-  // tokenAprovacaoInterna/loginAprovador/nomeAprovador: mesmo significado de enviarRDO acima.
-  function enviarParaAprovacao({ cliente, obra, data, xlsxBase64, pdfBase64, fileName, stateJSON, emailResponsavel, login, tokenAprovacaoInterna, loginAprovador, nomeAprovador }) {
-    return postJson_({ action: 'enviarParaAprovacao', cliente, obra, data, xlsxBase64, pdfBase64, fileName, stateJSON, emailResponsavel, login, tokenAprovacaoInterna, loginAprovador, nomeAprovador });
+  // tokenAprovacaoInterna/loginAprovador/nomeAprovador: mesmo significado de
+  // enviarRDO acima. os (14/07/2026): base da numeração nova.
+  function enviarParaAprovacao({ cliente, obra, data, xlsxBase64, pdfBase64, fileName, stateJSON, emailResponsavel, login, tokenAprovacaoInterna, loginAprovador, nomeAprovador, os }) {
+    return postJson_({ action: 'enviarParaAprovacao', cliente, obra, data, xlsxBase64, pdfBase64, fileName, stateJSON, emailResponsavel, login, tokenAprovacaoInterna, loginAprovador, nomeAprovador, os });
   }
 
   // Aprovação INTERNA (14/07/2026) - ver [[project_rdo_app]].
@@ -327,11 +351,12 @@ const RdoApi = (function () {
     return await resp.json();
   }
 
-  // Conclui a aprovação (assinatura por toque + registro de auditoria) e
-  // manda o RDO final direto (FN + Contratante) na resposta desta mesma
-  // chamada - ver finalizarAprovacao_ no Code.gs.
-  function finalizarAprovacao({ token, xlsxBase64, pdfBase64, fileName, assinaturaNome, assinaturaImagemBase64, cpf, ipCliente, userAgent }) {
-    return postJson_({ action: 'finalizarAprovacao', token, xlsxBase64, pdfBase64, fileName, assinaturaNome, assinaturaImagemBase64, cpf, ipCliente, userAgent });
+  // Conclui a aprovação (identificação + concordância, sem desenho - ver
+  // [[project_rdo_app]] 14/07/2026) e manda o RDO final direto (FN +
+  // Contratante) na resposta desta mesma chamada - ver finalizarAprovacao_
+  // no Code.gs.
+  function finalizarAprovacao({ token, xlsxBase64, pdfBase64, fileName, assinaturaNome, cpf, ipCliente, userAgent }) {
+    return postJson_({ action: 'finalizarAprovacao', token, xlsxBase64, pdfBase64, fileName, assinaturaNome, cpf, ipCliente, userAgent });
   }
 
   // Cadastro do responsável da Contratante (CPF/Nome/Função/Empresa,
@@ -346,17 +371,13 @@ const RdoApi = (function () {
     return postJson_({ action: 'buscarNomeCliente', cpf });
   }
 
-  function cadastrarCliente({ cpf, nome, funcao, empresa, assinaturaBase64 }) {
-    return postJson_({ action: 'cadastrarCliente', cpf, nome, funcao, empresa, assinaturaBase64 });
+  function cadastrarCliente({ cpf, nome, funcao, empresa }) {
+    return postJson_({ action: 'cadastrarCliente', cpf, nome, funcao, empresa });
   }
 
   // Login dos usuários da Contratada (11/07) - ver CHAVE_SESSAO_USUARIO em app.js.
   function login(login, senha) {
     return postJson_({ action: 'login', login, senha });
-  }
-
-  function salvarAssinaturaUsuario(login, senha, assinaturaBase64) {
-    return postJson_({ action: 'salvarAssinaturaUsuario', login, senha, assinaturaBase64 });
   }
 
   // Tela de Perfil (11/07 tarde, ícone da FN no topo) - ver telaPerfil_ em app.js.
@@ -415,7 +436,7 @@ const RdoApi = (function () {
   return {
     getObras, getEquipamentos, getVeiculos, reservarNumero, enviarRDO, previsualizarRDO, gerarLinkPreview,
     getVersaoApp, logErro, enviarParaAprovacao, buscarAprovacao, finalizarAprovacao,
-    buscarCliente, buscarNomeCliente, cadastrarCliente, login, salvarAssinaturaUsuario,
+    buscarCliente, buscarNomeCliente, cadastrarCliente, login,
     meusRdos, buscarPdfPorId, buscarXlsxPorId, reenviarLinkAprovacao, corrigirEmailAprovacao,
     salvarParaAprovacaoInterna, listarAprovacoesInternas, buscarAprovacaoInterna
   };
