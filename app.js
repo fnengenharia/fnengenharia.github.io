@@ -6,7 +6,7 @@
 // cada release (o mesmo valor deve ser espelhado em APP_VERSAO_ATUAL no
 // Code.gs, que é o que a atualização automática usa pra saber se tem
 // versão nova pra baixar).
-const VERSAO_APP = 'BETA 0.9.9';
+const VERSAO_APP = 'BETA 0.9.10';
 document.getElementById('versao-app').textContent = VERSAO_APP;
 
 // ---------------------------------------------------------------------------
@@ -256,6 +256,8 @@ const el = {
   subsecaoAtividadesContratante: document.getElementById('subsecao-atividades-contratante'),
   blocoEmailContratanteEnvio: document.getElementById('bloco-email-contratante-envio'),
   avisoElaboradorAprovacaoInterna: document.getElementById('aviso-elaborador-aprovacao-interna'),
+  btnSemAprovacaoContratante: document.getElementById('btn-sem-aprovacao-contratante'),
+  avisoSemAprovacaoContratante: document.getElementById('aviso-sem-aprovacao-contratante'),
   secaoAssinaturasEnvio: document.getElementById('secao-assinaturas-envio'),
   btnGerar: document.getElementById('btn-gerar'),
   status: document.getElementById('status-envio'),
@@ -943,6 +945,9 @@ el.btnLimparIdentificacao.addEventListener('click', () => {
   state.assinaturaAprovadorDataHora = '';
   state.assinaturaContratadaDataHora = '';
 
+  state.aprovacaoContratante = true;
+  atualizarBalaoSemAprovacao_();
+
   numeroReservado = null;
   el.previewNumero.textContent = '-';
 
@@ -1033,6 +1038,7 @@ function aplicarSessaoNoFormulario_(sessao) {
   el.cartaoLogin.style.display = 'none';
   el.barraAbas.style.display = 'flex';
   aplicarPerfilNaUI_(sessao.perfil);
+  atualizarBalaoSemAprovacao_();
   mostrarAba_('rdo');
 }
 
@@ -1827,6 +1833,11 @@ function validarParaEnvio_() {
   // Contratante aqui - o RDO sempre vai pra aprovação interna primeiro, um
   // administrador que decide depois como mandar pro cliente.
   if (perfilAtual_() === 'elaborador') return null;
+  // Balão "Gerar RDO sem assinatura da Contratante" (15/07/2026) - quem
+  // marcou assume a responsabilidade de colher a assinatura em campo, não
+  // existe e-mail de aprovação nesse caminho, então o campo fica opcional
+  // (só serve de CC informativo, ver enviarRDO_ no Code.gs).
+  if (!state.aprovacaoContratante) return null;
   // Atividades e assinatura do Contratante são exclusivas do link
   // (aprovacao.html) agora - o único jeito de mandar pro cliente é por
   // e-mail de aprovação, então o e-mail do responsável é sempre
@@ -2052,6 +2063,12 @@ async function resetarParaProximoRdo_() {
   state.assinaturaAprovadorDataHora = '';
   state.assinaturaContratadaDataHora = '';
 
+  // Balão "Gerar RDO sem assinatura da Contratante" (15/07/2026) - volta
+  // pro padrão (COM aprovação da Contratante) a cada RDO novo, nunca
+  // herda o "sem assinatura" de um RDO anterior por engano.
+  state.aprovacaoContratante = true;
+  atualizarBalaoSemAprovacao_();
+
   // RDO foi enviado de verdade - não tem mais o que restaurar de um "RDO em
   // andamento" (ver CHAVE_ESTADO_EM_ANDAMENTO).
   apagarEstadoEmAndamento_();
@@ -2145,9 +2162,7 @@ async function atualizarPreviewInline_() {
       el.statusConfirmacao.textContent = '';
     }
 
-    el.btnConfirmarEnvio.textContent = perfilAtual_() === 'elaborador'
-      ? 'Salvar para Aprovação Interna'
-      : 'ENVIAR À CONTRATANTE PARA APROVAÇÃO FINAL';
+    atualizarBalaoSemAprovacao_();
   } catch (err) {
     console.error(err);
     el.statusConfirmacao.textContent = 'Erro ao atualizar a prévia: ' + (err && err.message ? err.message : err);
@@ -2158,6 +2173,41 @@ async function atualizarPreviewInline_() {
     el.btnConfirmarEnvio.disabled = false;
   }
 }
+
+// Balão "Gerar RDO sem assinatura da Contratante" (15/07/2026, pedido do
+// Paulo) - reintroduz a opção de mandar o RDO final DIRETO (sem passar
+// pelo link de aprovação por e-mail), que já existia como checkbox antes
+// da release 0.9.7 e tinha sido removida junto com a assinatura presencial
+// - a mecânica de backend (`RdoApi.enviarRDO` quando `!state.
+// aprovacaoContratante`, ver `enviarRdoAoBackend_`) nunca foi removida,
+// só a UI pra ativar. Marcar o balão troca `state.aprovacaoContratante`
+// pra `false` e mostra o texto de responsabilidade (com o nome de quem
+// está logado) - é a mesma ação que antes era um checkbox de
+// concordância, só que em formato "balão" (pedido explícito do Paulo).
+// `validarParaEnvio_` já para de exigir e-mail da Contratante nesse modo
+// (o campo continua opcional pra CC, ver `enviarRDO_` no Code.gs).
+function atualizarBalaoSemAprovacao_() {
+  const semAprovacao = !state.aprovacaoContratante;
+  el.btnSemAprovacaoContratante.classList.toggle('marcado', semAprovacao);
+  if (semAprovacao) {
+    const sessaoAtual = carregarSessaoUsuario_();
+    const nome = (sessaoAtual && sessaoAtual.nome) || state.assinaturaContratadaNome || 'quem está enviando';
+    el.avisoSemAprovacaoContratante.textContent = 'Eu, ' + nome + ', assumo a responsabilidade por ' +
+      'colher a assinatura da Contratante em campo (no papel) e por arquivar o RDO ' +
+      'devidamente assinado no servidor desta obra, seguindo o processo tradicional da empresa.';
+    el.avisoSemAprovacaoContratante.style.display = 'block';
+  } else {
+    el.avisoSemAprovacaoContratante.style.display = 'none';
+  }
+  el.btnConfirmarEnvio.textContent = perfilAtual_() === 'elaborador'
+    ? 'Salvar para Aprovação Interna'
+    : (semAprovacao ? 'GERAR RDO FINAL (SEM APROVAÇÃO DA CONTRATANTE)' : 'ENVIAR À CONTRATANTE PARA APROVAÇÃO FINAL');
+}
+
+el.btnSemAprovacaoContratante.addEventListener('click', () => {
+  state.aprovacaoContratante = !state.aprovacaoContratante;
+  atualizarBalaoSemAprovacao_();
+});
 
 el.btnGerar.addEventListener('click', async () => {
   const erro = validarParaPreview_();
