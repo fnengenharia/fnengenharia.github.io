@@ -97,11 +97,21 @@
 
 <section class="cartao" id="cartao-login">
   <h2>Login</h2>
-  <label for="campo-login-usuario">Usuário</label>
-  <input type="text" id="campo-login-usuario" autocomplete="username" autocapitalize="off" autocorrect="off">
-  <label for="campo-senha-usuario">Senha</label>
-  <input type="password" id="campo-senha-usuario" autocomplete="current-password">
-  <button type="button" id="btn-entrar" class="botao-principal">Entrar</button>
+  <div id="bloco-login-normal">
+    <label for="campo-login-usuario">Usuário</label>
+    <input type="text" id="campo-login-usuario" autocomplete="username" autocapitalize="off" autocorrect="off">
+    <label for="campo-senha-usuario">Senha</label>
+    <input type="password" id="campo-senha-usuario" autocomplete="current-password">
+    <button type="button" id="btn-entrar" class="botao-principal">Entrar</button>
+  </div>
+  <div id="bloco-trocar-senha" style="display:none;">
+    <p>Por segurança, defina uma senha nova antes de continuar (só precisa fazer isso uma vez).</p>
+    <label for="campo-nova-senha">Nova senha (mínimo 8 caracteres)</label>
+    <input type="password" id="campo-nova-senha" autocomplete="new-password">
+    <label for="campo-nova-senha-confirmar">Confirme a nova senha</label>
+    <input type="password" id="campo-nova-senha-confirmar" autocomplete="new-password">
+    <button type="button" id="btn-trocar-senha" class="botao-principal">Definir nova senha e entrar</button>
+  </div>
   <div id="status-login" class="status" aria-live="polite"></div>
 </section>
 

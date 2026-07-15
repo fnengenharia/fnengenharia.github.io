@@ -14,6 +14,15 @@
 
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxYyo1aUt0NdsHsaALuXZhqpO3IZc5fhrnBJmtSXaR9nyjl95z9LM82I3YYkvP0iP0m/exec';
 
+// Versão do bundle web atual - mora aqui (não em app.js) porque
+// aprovacao.html carrega api.js mas não carrega app.js; qualquer código
+// que precise da versão do cliente (ex: o futuro gate de versão mínima do
+// backend) referencia esta constante, não uma cópia em app.js. Bumped
+// manualmente a cada release (o mesmo valor deve ser espelhado em
+// APP_VERSAO_ATUAL no Config.gs do backend, usado pela atualização
+// automática pra saber se tem versão nova pra baixar).
+const VERSAO_APP = 'BETA 0.9.11';
+
 // Cópia da lista inicial (obras ativas/recentes, OS 1294-1351, extraídas de
 // "Lista de serviços (OS).xls") embutida como fallback: usada enquanto
 // APPS_SCRIPT_URL não estiver configurada, e também como modo offline caso
@@ -210,7 +219,7 @@ const RdoApi = (function () {
       return obrasDoCache_() || OBRAS_FALLBACK;
     }
     try {
-      const resp = await fetch(APPS_SCRIPT_URL + '?action=obras');
+      const resp = await fetch(APPS_SCRIPT_URL + '?action=obras&versaoApp=' + encodeURIComponent(VERSAO_APP));
       const json = await resp.json();
       if (!json.ok) throw new Error(json.erro || 'erro desconhecido');
       RdoConectividade.marcarSucessoDeRede();
@@ -250,7 +259,7 @@ const RdoApi = (function () {
       return listaDoCache_(cacheKey) || fallback;
     }
     try {
-      const resp = await fetch(APPS_SCRIPT_URL + '?action=' + action);
+      const resp = await fetch(APPS_SCRIPT_URL + '?action=' + action + '&versaoApp=' + encodeURIComponent(VERSAO_APP));
       const json = await resp.json();
       if (!json.ok) throw new Error(json.erro || 'erro desconhecido');
       RdoConectividade.marcarSucessoDeRede();
@@ -278,16 +287,23 @@ const RdoApi = (function () {
     return buscarListaSimples_('veiculos', CACHE_KEY_VEICULOS, VEICULOS_FALLBACK);
   }
 
+  // Injeta versaoApp em todo POST automaticamente (um ponto só, não precisa
+  // repetir em cada função wrapper abaixo) - o backend usa esse campo pra
+  // decidir se o cliente está desatualizado demais pra continuar operando.
+  // Sobrescreve qualquer versaoApp que o chamador porventura já tenha
+  // colocado no payload (não deveria acontecer, mas garante que a versão
+  // real do bundle carregado sempre prevalece).
   async function postJson_(payload) {
     if (!APPS_SCRIPT_URL) {
       throw new Error('APPS_SCRIPT_URL ainda não configurada (ver backend/README_SETUP.md)');
     }
+    const payloadComVersao = Object.assign({}, payload, { versaoApp: VERSAO_APP });
     let resp;
     try {
       resp = await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payloadComVersao)
       });
     } catch (err) {
       // fetch rejeitado (sem rede de verdade) - diferente de uma resposta
@@ -307,12 +323,14 @@ const RdoApi = (function () {
     return postJson_({ action: 'reservarNumero', cliente, obra, data, os });
   }
 
-  // tokenAprovacaoInterna/loginAprovador/nomeAprovador (14/07/2026, opcionais)
-  // - só quando este envio conclui uma revisão de aprovação interna (ver
-  // [[project_rdo_app]] release de papéis de usuário). os (14/07/2026) -
-  // base da numeração nova.
-  function enviarRDO({ cliente, obra, data, xlsxBase64, pdfBase64, fileName, emailContratante, login, tokenAprovacaoInterna, loginAprovador, nomeAprovador, os }) {
-    return postJson_({ action: 'enviarRDO', cliente, obra, data, xlsxBase64, pdfBase64, fileName, emailContratante, login, tokenAprovacaoInterna, loginAprovador, nomeAprovador, os });
+  // tokenAprovacaoInterna (opcional) - só quando este envio conclui uma
+  // revisão de aprovação interna; o servidor deriva quem é o elaborador
+  // dono e quem é o administrador aprovador a partir do token de sessão e
+  // do próprio registro da revisão - loginAprovador/nomeAprovador NÃO são
+  // mais aceitos vindos do cliente (ver enviarRDO_ no Code.gs). os
+  // (14/07/2026) - base da numeração nova.
+  function enviarRDO({ cliente, obra, data, xlsxBase64, pdfBase64, fileName, emailContratante, token, tokenAprovacaoInterna, os }) {
+    return postJson_({ action: 'enviarRDO', cliente, obra, data, xlsxBase64, pdfBase64, fileName, emailContratante, token, tokenAprovacaoInterna, os });
   }
 
   function previsualizarRDO({ xlsxBase64, fileName }) {
@@ -327,23 +345,25 @@ const RdoApi = (function () {
   }
 
   // Aprovação do Contratante por e-mail (11/07) - ver www/aprovacao.html.
-  // tokenAprovacaoInterna/loginAprovador/nomeAprovador: mesmo significado de
-  // enviarRDO acima. os (14/07/2026): base da numeração nova.
-  function enviarParaAprovacao({ cliente, obra, data, xlsxBase64, pdfBase64, fileName, stateJSON, emailResponsavel, login, tokenAprovacaoInterna, loginAprovador, nomeAprovador, os }) {
-    return postJson_({ action: 'enviarParaAprovacao', cliente, obra, data, xlsxBase64, pdfBase64, fileName, stateJSON, emailResponsavel, login, tokenAprovacaoInterna, loginAprovador, nomeAprovador, os });
+  // tokenAprovacaoInterna: mesmo significado de enviarRDO acima. os
+  // (14/07/2026): base da numeração nova.
+  function enviarParaAprovacao({ cliente, obra, data, xlsxBase64, pdfBase64, fileName, stateJSON, emailResponsavel, token, tokenAprovacaoInterna, os }) {
+    return postJson_({ action: 'enviarParaAprovacao', cliente, obra, data, xlsxBase64, pdfBase64, fileName, stateJSON, emailResponsavel, token, tokenAprovacaoInterna, os });
   }
 
   // Aprovação INTERNA (14/07/2026) - ver [[project_rdo_app]].
-  function salvarParaAprovacaoInterna({ cliente, obra, data, stateJSON, login, senha }) {
-    return postJson_({ action: 'salvarParaAprovacaoInterna', cliente, obra, data, stateJSON, login, senha });
+  function salvarParaAprovacaoInterna({ cliente, obra, data, stateJSON, token }) {
+    return postJson_({ action: 'salvarParaAprovacaoInterna', cliente, obra, data, stateJSON, token });
   }
 
-  function listarAprovacoesInternas(login, senha) {
-    return postJson_({ action: 'listarAprovacoesInternas', login, senha });
+  function listarAprovacoesInternas(token) {
+    return postJson_({ action: 'listarAprovacoesInternas', token });
   }
 
-  function buscarAprovacaoInterna(login, senha, token) {
-    return postJson_({ action: 'buscarAprovacaoInterna', login, senha, token });
+  // tokenInterno identifica o registro em AprovacoesInternas - não
+  // confundir com o token de sessão do administrador que está abrindo.
+  function buscarAprovacaoInterna(token, tokenInterno) {
+    return postJson_({ action: 'buscarAprovacaoInterna', token, tokenInterno });
   }
 
   async function buscarAprovacao(token) {
@@ -375,31 +395,55 @@ const RdoApi = (function () {
     return postJson_({ action: 'cadastrarCliente', cpf, nome, funcao, empresa });
   }
 
-  // Login dos usuários da Contratada (11/07) - ver CHAVE_SESSAO_USUARIO em app.js.
+  // Login dos usuários da Contratada (11/07) - ver CHAVE_SESSAO_USUARIO em
+  // app.js. Devolve { ok:true, token, nome, perfil, funcao } (usuário já
+  // migrado pra hash) ou { ok:true, precisaTrocarSenha:true } (usuário
+  // ainda na senha antiga em texto puro - ver trocarSenhaObrigatoria
+  // abaixo).
   function login(login, senha) {
-    return postJson_({ action: 'login', login, senha });
+    return postJson_({ action: 'login', login, senha, userAgent: navigator.userAgent });
+  }
+
+  // Chamada uma única vez por usuário, só quando login() devolver
+  // precisaTrocarSenha:true - troca a senha em texto puro pelo hash
+  // definitivo e devolve o token de sessão, igual login() normal.
+  function trocarSenhaObrigatoria(login, senhaAntiga, novaSenha) {
+    return postJson_({ action: 'trocarSenhaObrigatoria', login, senhaAntiga, novaSenha, userAgent: navigator.userAgent });
+  }
+
+  // Confere se o token de sessão salvo no aparelho ainda é válido e
+  // devolve nome/perfil/função atualizados - substitui o antigo padrão de
+  // chamar login(login, senha) de novo só pra refrescar esses dados.
+  function validarSessao(token) {
+    return postJson_({ action: 'validarSessao', token });
+  }
+
+  function logout(token) {
+    return postJson_({ action: 'logout', token });
   }
 
   // Tela de Perfil (11/07 tarde, ícone da FN no topo) - ver telaPerfil_ em app.js.
-  function meusRdos(login, senha) {
-    return postJson_({ action: 'meusRdos', login, senha });
+  function meusRdos(token) {
+    return postJson_({ action: 'meusRdos', token });
   }
 
-  function buscarPdfPorId(login, senha, pdfFileId) {
-    return postJson_({ action: 'buscarPdfPorId', login, senha, pdfFileId });
+  function buscarPdfPorId(token, pdfFileId) {
+    return postJson_({ action: 'buscarPdfPorId', token, pdfFileId });
   }
 
   // Excel editável de um RDO - exclusivo admin_master (14/07/2026, ver [[project_rdo_app]]).
-  function buscarXlsxPorId(login, senha, xlsxFileId) {
-    return postJson_({ action: 'buscarXlsxPorId', login, senha, xlsxFileId });
+  function buscarXlsxPorId(token, xlsxFileId) {
+    return postJson_({ action: 'buscarXlsxPorId', token, xlsxFileId });
   }
 
-  function reenviarLinkAprovacao(login, senha, token) {
-    return postJson_({ action: 'reenviarLinkAprovacao', login, senha, token });
+  // tokenAprovacao identifica o registro em Aprovacoes - não confundir com
+  // o token de sessão de quem está reenviando.
+  function reenviarLinkAprovacao(token, tokenAprovacao) {
+    return postJson_({ action: 'reenviarLinkAprovacao', token, tokenAprovacao });
   }
 
-  function corrigirEmailAprovacao(login, senha, token, novoEmail) {
-    return postJson_({ action: 'corrigirEmailAprovacao', login, senha, token, novoEmail });
+  function corrigirEmailAprovacao(token, tokenAprovacao, novoEmail) {
+    return postJson_({ action: 'corrigirEmailAprovacao', token, tokenAprovacao, novoEmail });
   }
 
   async function getVersaoApp() {
@@ -436,7 +480,7 @@ const RdoApi = (function () {
   return {
     getObras, getEquipamentos, getVeiculos, reservarNumero, enviarRDO, previsualizarRDO, gerarLinkPreview,
     getVersaoApp, logErro, enviarParaAprovacao, buscarAprovacao, finalizarAprovacao,
-    buscarCliente, buscarNomeCliente, cadastrarCliente, login,
+    buscarCliente, buscarNomeCliente, cadastrarCliente, login, trocarSenhaObrigatoria, validarSessao, logout,
     meusRdos, buscarPdfPorId, buscarXlsxPorId, reenviarLinkAprovacao, corrigirEmailAprovacao,
     salvarParaAprovacaoInterna, listarAprovacoesInternas, buscarAprovacaoInterna
   };

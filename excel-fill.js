@@ -140,7 +140,7 @@ const RdoExcel = (function () {
   // wrapText ligado).
   function preencherObservacoes_(sh, texto) {
     const cell = sh.getCell('L9');
-    cell.value = (texto || '').trim();
+    cell.value = sanitizarTextoLivre_((texto || '').trim());
     cell.alignment = Object.assign({}, cell.alignment, { wrapText: true, vertical: 'top' });
 
     const nLinhas = Math.max(4, Math.ceil((texto || '').length / CHARS_POR_LINHA_OBSERVACOES));
@@ -191,6 +191,28 @@ const RdoExcel = (function () {
       .map(palavra => palavra[0].toUpperCase()).join('.');
   }
 
+  // Neutraliza interpretação de fórmula em texto livre de usuário antes de
+  // escrever numa célula. cell.value com uma string comum no ExcelJS grava
+  // texto de verdade (não gera um elemento <f> de fórmula), então abrir o
+  // .xlsx puro no Excel não executaria nada - mas o backend converte o
+  // xlsx em PDF importando-o pro Google Sheets primeiro
+  // (Drive.Files.create com mimeType GOOGLE_SHEETS, ver
+  // converterXlsxParaPdf_ no Code.gs), e o importador de planilhas do
+  // Sheets é conhecido por reinterpretar como fórmula um valor que comece
+  // com =/+/-/@, mesmo vindo de uma célula tipada como string no xlsx
+  // original - conversão que roda automaticamente em toda submissão de
+  // RDO. Prefixar com apóstrofo é a mitigação padrão contra esse tipo de
+  // injeção (mesma usada contra CSV/Formula Injection) - efeito colateral
+  // aceitável: se o Sheets não remover o apóstrofo na importação, ele
+  // aparece como caractere literal no texto final. Não é preciso aplicar
+  // em células que já têm um rótulo fixo concatenado na frente (ex.
+  // "CONTRATANTE:\n" + valor) - o valor da célula como um todo nunca
+  // começa com o caractere de risco nesses casos.
+  function sanitizarTextoLivre_(texto) {
+    const t = String(texto || '');
+    return /^[=+\-@]/.test(t.trim()) ? "'" + t : t;
+  }
+
   // Efetivo (MOD) / Equipamentos e Veículos: 12 linhas físicas
   // COMPARTILHADAS (19-30) entre as colunas lado a lado. Equipamentos e
   // Veículos viraram uma lista ÚNICA no formulário (10/07) - os primeiros
@@ -211,7 +233,7 @@ const RdoExcel = (function () {
       const descVeicAbrev = abreviarDescricaoEquipamento_(itemVeic.descricao);
 
       const cellMod = sh.getCell(`B${r}`);
-      cellMod.value = itemMod.descricao || '';
+      cellMod.value = sanitizarTextoLivre_(itemMod.descricao || '');
       cellMod.alignment = Object.assign({}, cellMod.alignment, { wrapText: true });
       // Quant vai na coluna G - B:F é uma única mescla (rótulo), escrever
       // em F (célula secundária da mescla) redireciona pro "mestre" B e
@@ -219,12 +241,12 @@ const RdoExcel = (function () {
       sh.getCell(`G${r}`).value = itemMod.quant !== '' && itemMod.quant != null ? Number(itemMod.quant) : null;
 
       const cellEquip = sh.getCell(`H${r}`);
-      cellEquip.value = descEquipAbrev;
+      cellEquip.value = sanitizarTextoLivre_(descEquipAbrev);
       cellEquip.alignment = Object.assign({}, cellEquip.alignment, { wrapText: true });
       sh.getCell(`N${r}`).value = itemEquip.quant !== '' && itemEquip.quant != null ? Number(itemEquip.quant) : null;
 
       const cellVeic = sh.getCell(`P${r}`);
-      cellVeic.value = descVeicAbrev;
+      cellVeic.value = sanitizarTextoLivre_(descVeicAbrev);
       cellVeic.alignment = Object.assign({}, cellVeic.alignment, { wrapText: true });
       sh.getCell(`V${r}`).value = itemVeic.quant !== '' && itemVeic.quant != null ? Number(itemVeic.quant) : null;
 
@@ -330,7 +352,7 @@ const RdoExcel = (function () {
       // branco - deixa claro que o campo foi visto e ficou mesmo vazio.
       sh.getCell(`C${linhaAtual}`).value = item.inicio || '-';
       sh.getCell(`D${linhaAtual}`).value = item.fim || '-';
-      sh.getCell(`E${linhaAtual}`).value = texto;
+      sh.getCell(`E${linhaAtual}`).value = sanitizarTextoLivre_(texto);
       // Bug real corrigido (14/07/2026): as últimas linhas de cada bloco
       // (55/56 na Contratada, 69 na Contratante) vêm OCULTAS por padrão no
       // modelo (reserva de overflow, mesmo padrão de sempre) - sem forçar
@@ -377,9 +399,9 @@ const RdoExcel = (function () {
   // (F72/F73/F74 - "Elaborador"/"Aprovador"/"Contratante") já é fixa no
   // modelo, nunca escrita pelo código.
   function preencherLinhaAssinatura_(sh, linha, funcao, nome, dataHoraIso) {
-    sh.getCell('A' + linha).value = (funcao || '').trim();
+    sh.getCell('A' + linha).value = sanitizarTextoLivre_((funcao || '').trim());
     const celNome = sh.getCell('K' + linha);
-    celNome.value = (nome || '').trim();
+    celNome.value = sanitizarTextoLivre_((nome || '').trim());
     celNome.alignment = Object.assign({}, celNome.alignment, { shrinkToFit: true });
     sh.getCell('R' + linha).value = formatarDataHoraBR_(dataHoraIso);
   }

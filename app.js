@@ -2,11 +2,10 @@
 // equipamentos e veículos/atividades), condições do tempo, e o fluxo de
 // "Gerar e Enviar RDO" (numeração -> gera xlsx -> envia pro backend).
 
-// Versão exibida no canto superior direito do app - bumped manualmente a
-// cada release (o mesmo valor deve ser espelhado em APP_VERSAO_ATUAL no
-// Code.gs, que é o que a atualização automática usa pra saber se tem
-// versão nova pra baixar).
-const VERSAO_APP = 'BETA 0.9.11';
+// VERSAO_APP agora é declarada em api.js (carregado antes deste arquivo,
+// ver index.html) - aprovacao.html carrega api.js mas não app.js, então a
+// constante não pode viver só aqui. Esta linha só escreve no DOM do
+// próprio app (o elemento #versao-app não existe em aprovacao.html).
 document.getElementById('versao-app').textContent = VERSAO_APP;
 
 // ---------------------------------------------------------------------------
@@ -280,9 +279,14 @@ const el = {
   abaRdo: document.getElementById('aba-rdo'),
   abaPerfil: document.getElementById('aba-perfil'),
   cartaoLogin: document.getElementById('cartao-login'),
+  blocoLoginNormal: document.getElementById('bloco-login-normal'),
   loginUsuario: document.getElementById('campo-login-usuario'),
   senhaUsuario: document.getElementById('campo-senha-usuario'),
   btnEntrar: document.getElementById('btn-entrar'),
+  blocoTrocarSenha: document.getElementById('bloco-trocar-senha'),
+  campoNovaSenha: document.getElementById('campo-nova-senha'),
+  campoNovaSenhaConfirmar: document.getElementById('campo-nova-senha-confirmar'),
+  btnTrocarSenha: document.getElementById('btn-trocar-senha'),
   statusLogin: document.getElementById('status-login'),
   cartaoPerfil: document.getElementById('cartao-perfil'),
   perfilResumo: document.getElementById('perfil-resumo'),
@@ -984,9 +988,9 @@ el.btnLimparIdentificacao.addEventListener('click', () => {
 // de nome por conta cadastrada (ver login_ no Code.gs, que devolve Nome e
 // Função da aba Usuarios). Sessão fica salva no aparelho (localStorage)
 // indefinidamente (pedido do Paulo: "continua logado" - só sai com "Sair"
-// manual) - contém a própria senha em texto puro, mesmo nível de confiança
-// já aceito pro cadastro de usuários (aba "Usuarios" da planilha também em
-// texto puro).
+// manual) - guarda um TOKEN de sessão (UUID com validade de 30 dias, ver
+// SESSAO_VALIDADE_DIAS no Config.gs do backend), nunca mais a senha do
+// usuário.
 // ---------------------------------------------------------------------------
 const CHAVE_SESSAO_USUARIO = 'rdo_sessao_usuario';
 
@@ -1023,9 +1027,14 @@ async function atualizarSessaoDoServidor_() {
   const sessaoAtual = carregarSessaoUsuario_();
   if (!sessaoAtual || !RdoConectividade.estaOnline() || aprovacaoInternaAtual_) return;
   try {
-    const resp = await RdoApi.login(sessaoAtual.login, sessaoAtual.senha);
+    const resp = await RdoApi.validarSessao(sessaoAtual.token);
+    // Falha silenciosa (token expirado, revogado, ou qualquer erro de
+    // aplicação) - mesma filosofia de antes: mantém os dados em cache,
+    // sem forçar logout numa checagem de segundo plano. Uma sessão de
+    // verdade inválida vai aparecer como erro na próxima ação real
+    // (enviar RDO, abrir Perfil, etc.), onde faz sentido tratar o logout.
     if (!resp.ok) return;
-    const sessaoAtualizada = { login: sessaoAtual.login, senha: sessaoAtual.senha, nome: resp.nome, funcao: resp.funcao, perfil: resp.perfil };
+    const sessaoAtualizada = { token: sessaoAtual.token, login: resp.login, nome: resp.nome, funcao: resp.funcao, perfil: resp.perfil };
     salvarSessaoUsuario_(sessaoAtualizada);
     state.assinaturaContratadaNome = sessaoAtualizada.nome;
     state.assinaturaContratadaFuncao = sessaoAtualizada.funcao || '';
@@ -1347,6 +1356,11 @@ async function atualizarPreviewNumero() {
 // intermediário de "logado mas sem assinatura cadastrada".
 // ---------------------------------------------------------------------------
 
+// Guarda login+senha antiga entre o clique em "Entrar" (que detecta
+// precisaTrocarSenha) e o clique em "Definir nova senha e entrar" - nunca
+// persistido, só em memória durante essa troca pontual.
+let trocaSenhaPendente_ = null;
+
 el.btnEntrar.addEventListener('click', async () => {
   const login = el.loginUsuario.value.trim();
   const senha = el.senhaUsuario.value;
@@ -1367,7 +1381,16 @@ el.btnEntrar.addEventListener('click', async () => {
       return;
     }
 
-    const sessao = { login, senha, nome: resp.nome, funcao: resp.funcao, perfil: resp.perfil };
+    if (resp.precisaTrocarSenha) {
+      trocaSenhaPendente_ = { login, senhaAntiga: senha };
+      el.senhaUsuario.value = '';
+      el.blocoLoginNormal.style.display = 'none';
+      el.blocoTrocarSenha.style.display = '';
+      el.statusLogin.textContent = '';
+      return;
+    }
+
+    const sessao = { token: resp.token, login, nome: resp.nome, funcao: resp.funcao, perfil: resp.perfil };
     salvarSessaoUsuario_(sessao);
     aplicarSessaoNoFormulario_(sessao);
   } catch (err) {
@@ -1379,9 +1402,60 @@ el.btnEntrar.addEventListener('click', async () => {
   }
 });
 
-el.btnSair.addEventListener('click', () => {
+el.btnTrocarSenha.addEventListener('click', async () => {
+  if (!trocaSenhaPendente_) return;
+  const novaSenha = el.campoNovaSenha.value;
+  const confirmacao = el.campoNovaSenhaConfirmar.value;
+  if (!novaSenha || novaSenha.length < 8) {
+    el.statusLogin.textContent = 'A nova senha precisa ter pelo menos 8 caracteres.';
+    el.statusLogin.className = 'status erro';
+    return;
+  }
+  if (novaSenha !== confirmacao) {
+    el.statusLogin.textContent = 'As duas senhas digitadas não coincidem.';
+    el.statusLogin.className = 'status erro';
+    return;
+  }
+
+  el.btnTrocarSenha.disabled = true;
+  try {
+    el.statusLogin.textContent = 'Definindo nova senha...';
+    el.statusLogin.className = 'status';
+    const resp = await RdoApi.trocarSenhaObrigatoria(trocaSenhaPendente_.login, trocaSenhaPendente_.senhaAntiga, novaSenha);
+    if (!resp.ok) {
+      el.statusLogin.textContent = resp.erro || 'Não consegui trocar a senha.';
+      el.statusLogin.className = 'status erro';
+      return;
+    }
+
+    const sessao = { token: resp.token, login: trocaSenhaPendente_.login, nome: resp.nome, funcao: resp.funcao, perfil: resp.perfil };
+    trocaSenhaPendente_ = null;
+    el.campoNovaSenha.value = '';
+    el.campoNovaSenhaConfirmar.value = '';
+    el.blocoTrocarSenha.style.display = 'none';
+    el.blocoLoginNormal.style.display = '';
+    salvarSessaoUsuario_(sessao);
+    aplicarSessaoNoFormulario_(sessao);
+  } catch (err) {
+    console.error(err);
+    el.statusLogin.textContent = 'Erro ao trocar senha: ' + (err && err.message ? err.message : err);
+    el.statusLogin.className = 'status erro';
+  } finally {
+    el.btnTrocarSenha.disabled = false;
+  }
+});
+
+el.btnSair.addEventListener('click', async () => {
   if (!confirm('Sair da conta? Vai pedir login de novo na próxima vez que abrir o app.')) return;
+  const sessaoAtual = carregarSessaoUsuario_();
   localStorage.removeItem(CHAVE_SESSAO_USUARIO);
+  // Revoga a sessão no servidor (best-effort - se falhar por falta de
+  // rede, a sessão expira sozinha em até SESSAO_VALIDADE_DIAS de qualquer
+  // forma) pra um token copiado/vazado não continuar válido depois do
+  // usuário ter saído explicitamente.
+  if (sessaoAtual && sessaoAtual.token) {
+    try { await RdoApi.logout(sessaoAtual.token); } catch (err) { /* ignorado - best-effort */ }
+  }
   location.reload();
 });
 
@@ -1474,7 +1548,7 @@ function montarLinhaAprovado_(item) {
   const sessao = carregarSessaoUsuario_();
 
   async function buscarPdf_() {
-    const resp = await RdoApi.buscarPdfPorId(sessao.login, sessao.senha, item.pdfFileId);
+    const resp = await RdoApi.buscarPdfPorId(sessao.token, item.pdfFileId);
     if (!resp.ok) throw new Error(resp.erro || 'Não consegui abrir esse PDF.');
     return resp.pdfBase64;
   }
@@ -1521,7 +1595,7 @@ function montarLinhaAprovado_(item) {
       try {
         statusLinha.textContent = 'Preparando .xlsx...';
         statusLinha.className = 'status status-linha-perfil';
-        const resp = await RdoApi.buscarXlsxPorId(sessao.login, sessao.senha, item.xlsxFileId);
+        const resp = await RdoApi.buscarXlsxPorId(sessao.token, item.xlsxFileId);
         if (!resp.ok) throw new Error(resp.erro || 'Não consegui baixar esse Excel.');
         const nomeXlsx = item.fileName.replace(/\.pdf$/i, '.xlsx');
         await compartilharPdf_(resp.xlsxBase64, nomeXlsx, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -1563,7 +1637,7 @@ function montarLinhaPendente_(item) {
     try {
       statusLinha.textContent = 'Reenviando...';
       statusLinha.className = 'status status-linha-perfil';
-      const resp = await RdoApi.reenviarLinkAprovacao(sessao.login, sessao.senha, item.token);
+      const resp = await RdoApi.reenviarLinkAprovacao(sessao.token, item.token);
       if (!resp.ok) throw new Error(resp.erro || 'Não consegui reenviar.');
       statusLinha.textContent = 'Link reenviado para ' + resp.emailResponsavel + '!';
       statusLinha.className = 'status status-linha-perfil sucesso';
@@ -1592,10 +1666,10 @@ function montarLinhaPendente_(item) {
     try {
       statusLinha.textContent = 'Salvando e reenviando...';
       statusLinha.className = 'status status-linha-perfil';
-      const respCorrigir = await RdoApi.corrigirEmailAprovacao(sessao.login, sessao.senha, item.token, novoEmail);
+      const respCorrigir = await RdoApi.corrigirEmailAprovacao(sessao.token, item.token, novoEmail);
       if (!respCorrigir.ok) throw new Error(respCorrigir.erro || 'Não consegui salvar o e-mail.');
       elEmailPendente.textContent = novoEmail;
-      const respReenviar = await RdoApi.reenviarLinkAprovacao(sessao.login, sessao.senha, item.token);
+      const respReenviar = await RdoApi.reenviarLinkAprovacao(sessao.token, item.token);
       if (!respReenviar.ok) throw new Error(respReenviar.erro || 'E-mail salvo, mas não consegui reenviar.');
       statusLinha.textContent = 'E-mail corrigido e link reenviado para ' + novoEmail + '!';
       statusLinha.className = 'status status-linha-perfil sucesso';
@@ -1622,7 +1696,7 @@ async function carregarPerfil_() {
   el.perfilDetalheObra.style.display = 'none';
 
   try {
-    const resp = await RdoApi.meusRdos(sessao.login, sessao.senha);
+    const resp = await RdoApi.meusRdos(sessao.token);
     if (!resp.ok) throw new Error(resp.erro || 'Não consegui carregar seus RDOs.');
 
     perfilDadosAtuais = { aprovados: resp.aprovados, pendentes: resp.pendentes };
@@ -1650,7 +1724,7 @@ async function carregarPerfil_() {
   if (sessao.perfil === 'administrador' || sessao.perfil === 'admin_master') {
     el.cartaoAprovacoesInternas.style.display = 'block';
     try {
-      const respInternas = await RdoApi.listarAprovacoesInternas(sessao.login, sessao.senha);
+      const respInternas = await RdoApi.listarAprovacoesInternas(sessao.token);
       if (respInternas.ok) renderizarListaAprovacoesInternas_(respInternas.pendentes);
     } catch (err) {
       console.error('Falha ao carregar RDOs para revisar:', err);
@@ -1679,11 +1753,11 @@ function renderizarListaAprovacoesInternas_(pendentes) {
 
 // aprovacaoInternaAtual_ já declarado no topo do arquivo (ver comentário lá).
 
-async function abrirRevisaoInterna_(token) {
+async function abrirRevisaoInterna_(tokenInterno) {
   const sessao = carregarSessaoUsuario_();
   if (!sessao) return;
   try {
-    const resp = await RdoApi.buscarAprovacaoInterna(sessao.login, sessao.senha, token);
+    const resp = await RdoApi.buscarAprovacaoInterna(sessao.token, tokenInterno);
     if (!resp.ok) { alert(resp.erro || 'Não consegui abrir esse RDO.'); return; }
 
     const s = JSON.parse(resp.stateJSON);
@@ -1748,7 +1822,7 @@ async function abrirRevisaoInterna_(token) {
 
     el.assinaturaContratadaInfo.textContent = 'Elaborado por: ' + (s.assinaturaContratadaNome || resp.nomeElaborador || '');
 
-    aprovacaoInternaAtual_ = { token, loginElaborador: resp.loginElaborador, nomeElaborador: resp.nomeElaborador };
+    aprovacaoInternaAtual_ = { token: tokenInterno, loginElaborador: resp.loginElaborador, nomeElaborador: resp.nomeElaborador };
     aplicarTravamentoRevisaoInterna_(true, sessao.perfil);
 
     mostrarAba_('rdo');
@@ -2280,7 +2354,7 @@ el.btnAbrirPreviaOffline.addEventListener('click', async () => {
 // revisão de aprovação interna (ver [[project_rdo_app]]). `loginParaEnviar`
 // continua sendo o dono/elaborador original do RDO nesse caso (não quem
 // está revisando) - preserva a atribuição em Meu Perfil/pasta do Drive.
-async function enviarRdoAoBackend_(stateParaEnviar, loginParaEnviar, numeroJaReservado, revisaoInterna) {
+async function enviarRdoAoBackend_(stateParaEnviar, numeroJaReservado, revisaoInterna) {
   const numero = numeroJaReservado != null
     ? numeroJaReservado
     : (await RdoApi.reservarNumero(stateParaEnviar.contratante, stateParaEnviar.obra, stateParaEnviar.data, stateParaEnviar.os)).numero;
@@ -2289,11 +2363,20 @@ async function enviarRdoAoBackend_(stateParaEnviar, loginParaEnviar, numeroJaRes
   const respPdfFinal = await RdoApi.previsualizarRDO({ xlsxBase64: xlsxFinalBase64, fileName: fileNameFinal });
   const pdfBase64 = respPdfFinal.pdfBase64;
 
-  const camposRevisao = revisaoInterna ? {
-    tokenAprovacaoInterna: revisaoInterna.tokenAprovacaoInterna,
-    loginAprovador: revisaoInterna.loginAprovador,
-    nomeAprovador: revisaoInterna.nomeAprovador
-  } : {};
+  // tokenAprovacaoInterna é o único campo que ainda mandamos sobre a
+  // revisão - o servidor deriva quem é o elaborador dono e quem é o
+  // administrador aprovador a partir do token de sessão (abaixo) e do
+  // próprio registro da revisão em AprovacoesInternas, nunca de um campo
+  // solto no payload (ver enviarRDO_/enviarParaAprovacao_ no Code.gs).
+  const camposRevisao = revisaoInterna ? { tokenAprovacaoInterna: revisaoInterna.tokenAprovacaoInterna } : {};
+
+  // Token da sessão de quem está confirmando o envio agora (elaborador
+  // direto ou administrador finalizando uma revisão) - enviarRDO_/
+  // enviarParaAprovacao_ exigem uma sessão válida pra atribuir o RDO e,
+  // numa revisão interna, pra confirmar que quem está finalizando é
+  // mesmo administrador/admin_master.
+  const sessaoAtual = carregarSessaoUsuario_();
+  const tokenSessao = sessaoAtual ? sessaoAtual.token : null;
 
   let resp;
   if (stateParaEnviar.aprovacaoContratante) {
@@ -2306,7 +2389,7 @@ async function enviarRdoAoBackend_(stateParaEnviar, loginParaEnviar, numeroJaRes
       fileName: fileNameFinal,
       stateJSON: JSON.stringify(stateParaEnviar),
       emailResponsavel: stateParaEnviar.emailContratante,
-      login: loginParaEnviar,
+      token: tokenSessao,
       os: stateParaEnviar.os
     }, camposRevisao));
   } else {
@@ -2318,7 +2401,7 @@ async function enviarRdoAoBackend_(stateParaEnviar, loginParaEnviar, numeroJaRes
       pdfBase64,
       fileName: fileNameFinal,
       emailContratante: stateParaEnviar.emailContratante,
-      login: loginParaEnviar,
+      token: tokenSessao,
       os: stateParaEnviar.os
     }, camposRevisao));
   }
@@ -2408,7 +2491,7 @@ async function sincronizarFilaOffline_() {
     while (fila.length) {
       const item = fila[0];
       try {
-        const { resp, numero } = await enviarRdoAoBackend_(item.state, item.login, null);
+        const { resp, numero } = await enviarRdoAoBackend_(item.state, null);
         fila.shift();
         salvarFilaPendente_(fila);
 
@@ -2455,7 +2538,6 @@ el.btnConfirmarEnvio.addEventListener('click', async () => {
   el.btnConfirmarEnvio.disabled = true;
   try {
     const sessaoAtual = carregarSessaoUsuario_();
-    const loginAtual = sessaoAtual ? sessaoAtual.login : '';
 
     // Elaborador (14/07/2026, papéis de usuário): não manda pro cliente -
     // só salva pra um administrador revisar depois. Sem fila offline pra
@@ -2476,8 +2558,7 @@ el.btnConfirmarEnvio.addEventListener('click', async () => {
         obra: state.obra,
         data: state.data,
         stateJSON: JSON.stringify(state),
-        login: sessaoAtual.login,
-        senha: sessaoAtual.senha
+        token: sessaoAtual.token
       });
       if (!resp.ok) throw new Error(resp.erro || 'Não consegui salvar.');
       el.statusConfirmacao.textContent = 'RDO salvo! Um administrador vai revisar e enviar pro Contratante.';
@@ -2506,7 +2587,6 @@ el.btnConfirmarEnvio.addEventListener('click', async () => {
       fila.push({
         id: Date.now() + '-' + Math.random().toString(36).slice(2),
         state: JSON.parse(JSON.stringify(state)),
-        login: loginAtual,
         criadoEm: new Date().toISOString()
       });
       salvarFilaPendente_(fila);
@@ -2535,24 +2615,21 @@ el.btnConfirmarEnvio.addEventListener('click', async () => {
     preencherAutorPadrao_(state.atividadesContratada, sessaoAtual ? sessaoAtual.nome : '');
 
     // Revisão de aprovação interna (14/07/2026): o dono do RDO continua
-    // sendo o elaborador original (login/Drive/Meu Perfil); quem revisou
-    // agora vira o Aprovador. Rows novas ganham autor = quem revisou.
-    let loginParaEnviar = loginAtual;
+    // sendo o elaborador original - o servidor deriva isso do próprio
+    // registro em AprovacoesInternas (ver enviarRDO_ no Code.gs), não de
+    // um login mandado pelo cliente. Quem revisou agora vira o Aprovador
+    // (também derivado da sessão no servidor). Rows novas ganham autor =
+    // quem revisou.
     let revisaoInterna = null;
     if (aprovacaoInternaAtual_) {
-      loginParaEnviar = aprovacaoInternaAtual_.loginElaborador;
       state.assinaturaAprovadorDataHora = new Date().toISOString();
-      revisaoInterna = {
-        tokenAprovacaoInterna: aprovacaoInternaAtual_.token,
-        loginAprovador: loginAtual,
-        nomeAprovador: sessaoAtual ? sessaoAtual.nome : ''
-      };
+      revisaoInterna = { tokenAprovacaoInterna: aprovacaoInternaAtual_.token };
     }
 
     // Gera a partir do state ATUAL - nunca reaproveita o que foi gerado só
     // pra exibir a prévia (evita mandar uma versão desatualizada se a
     // pessoa editou algo entre pré-visualizar e confirmar).
-    const { resp, pdfBase64, fileNameFinal } = await enviarRdoAoBackend_(state, loginParaEnviar, previewNumeroAtual, revisaoInterna);
+    const { resp, pdfBase64, fileNameFinal } = await enviarRdoAoBackend_(state, previewNumeroAtual, revisaoInterna);
     previewPdfBase64 = pdfBase64;
     previewFileName = fileNameFinal;
 
